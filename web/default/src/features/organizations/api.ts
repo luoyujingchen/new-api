@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 import type {
+  CreateRateLimitRequest,
   Company,
   CompanyFormData,
   CompanyListResponse,
@@ -25,7 +26,11 @@ import type {
   DepartmentFormData,
   DepartmentListResponse,
   DepartmentTreeNode,
+  EffectiveRateLimitData,
   MoveDepartmentFormData,
+  OrganizationRateLimit,
+  RateLimitListResponse,
+  UpdateRateLimitRequest,
   UserDepartmentFormData,
   ApiResponse,
 } from './types'
@@ -277,5 +282,96 @@ export async function clearUserDepartment(
   userId: number
 ): Promise<ApiResponse<null>> {
   const res = await api.delete(`/api/user/${userId}/department`)
+  return res.data
+}
+
+// ============================================================================
+// Organization Rate Limit APIs
+// ============================================================================
+
+/**
+ * Get organization rate limits
+ */
+export async function getOrganizationRateLimits(params: {
+  org_type: 'company' | 'department'
+  org_id: number
+  model_id?: number
+  status?: number
+}): Promise<RateLimitListResponse> {
+  const queryParams = new URLSearchParams({
+    org_type: params.org_type,
+    org_id: String(params.org_id),
+  })
+  if (params.model_id !== undefined) {
+    queryParams.set('model_id', String(params.model_id))
+  }
+  if (params.status !== undefined) {
+    queryParams.set('status', String(params.status))
+  }
+
+  const res = await api.get(`/api/rate-limit/?${queryParams.toString()}`)
+  return res.data.data
+}
+
+/**
+ * Get single rate limit rule
+ */
+export async function getOrganizationRateLimit(
+  id: number
+): Promise<{ data: OrganizationRateLimit }> {
+  const res = await api.get(`/api/rate-limit/${id}`)
+  return res.data
+}
+
+/**
+ * Create rate limit rule
+ */
+export async function createOrganizationRateLimit(
+  data: CreateRateLimitRequest
+): Promise<ApiResponse<{ id: number }>> {
+  const res = await api.post('/api/rate-limit/', data)
+  return res.data
+}
+
+/**
+ * Update rate limit rule
+ */
+export async function updateOrganizationRateLimit(
+  id: number,
+  data: UpdateRateLimitRequest
+): Promise<ApiResponse<null>> {
+  const res = await api.put(`/api/rate-limit/${id}`, data)
+  return res.data
+}
+
+/**
+ * Delete rate limit rule
+ */
+export async function deleteOrganizationRateLimit(
+  id: number
+): Promise<ApiResponse<null>> {
+  const res = await api.delete(`/api/rate-limit/${id}`)
+  return res.data
+}
+
+/**
+ * Get user's effective rate limit
+ */
+export async function getUserEffectiveRateLimit(
+  userId: number,
+  params: { modelId?: number; modelName?: string } = {}
+): Promise<ApiResponse<EffectiveRateLimitData>> {
+  const queryParams = new URLSearchParams()
+  if (params.modelId !== undefined) {
+    queryParams.set('model_id', String(params.modelId))
+  }
+  if (params.modelName) {
+    queryParams.set('model_name', params.modelName)
+  }
+  const queryString = queryParams.toString()
+  const url = queryString
+    ? `/api/rate-limit/user/${userId}?${queryString}`
+    : `/api/rate-limit/user/${userId}`
+  const res = await api.get(url)
   return res.data
 }

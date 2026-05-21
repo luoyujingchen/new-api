@@ -24,6 +24,7 @@ import { Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DepartmentsTable } from './departments-table'
 import { DepartmentsMutateDrawer } from './departments-mutate-drawer'
+import { OrganizationRateLimitDrawer } from './organization-rate-limit-drawer'
 import { getDepartments, getCompany } from '../api'
 import { type Department } from '../types'
 
@@ -42,6 +43,7 @@ export function DepartmentsPage() {
   const [pageSize] = useState(20)
   const [currentRow, setCurrentRow] = useState<Department | undefined>()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [rateLimitTarget, setRateLimitTarget] = useState<Department | undefined>()
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   // Fetch company info if company_id is in search params
@@ -71,6 +73,10 @@ export function DepartmentsPage() {
 
   const handleRefresh = () => {
     setRefreshTrigger((prev) => prev + 1)
+  }
+
+  const handleConfigureRateLimit = (department: Department) => {
+    setRateLimitTarget(department)
   }
 
   const handleClearCompanyFilter = () => {
@@ -123,6 +129,7 @@ export function DepartmentsPage() {
         pageSize={pageSize}
         onPageChange={handlePageChange}
         onEdit={handleEdit}
+        onConfigureRateLimit={handleConfigureRateLimit}
         onRefresh={handleRefresh}
       />
 
@@ -142,6 +149,24 @@ export function DepartmentsPage() {
         }}
         currentRow={currentRow}
         onRefresh={handleRefresh}
+      />
+
+      <OrganizationRateLimitDrawer
+        open={!!rateLimitTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRateLimitTarget(undefined)
+          }
+        }}
+        target={
+          rateLimitTarget
+            ? {
+                orgType: 'department',
+                orgId: rateLimitTarget.id,
+                orgName: rateLimitTarget.name,
+              }
+            : null
+        }
       />
     </div>
   )

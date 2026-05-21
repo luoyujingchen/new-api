@@ -26,7 +26,7 @@ import {
   type PaginationState,
 } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
-import { MoreHorizontal, Pencil, Trash2, FolderTree } from 'lucide-react'
+import { MoreHorizontal, Pencil, Trash2, FolderTree, Gauge } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -56,6 +56,7 @@ interface CompaniesTableProps {
   onPageChange: (page: number) => void
   onEdit: (company: Company) => void
   onViewDepartments: (company: Company) => void
+  onConfigureRateLimit: (company: Company) => void
   onRefresh: () => void
 }
 
@@ -67,6 +68,7 @@ export function CompaniesTable({
   onPageChange,
   onEdit,
   onViewDepartments,
+  onConfigureRateLimit,
   onRefresh,
 }: CompaniesTableProps) {
   const { t } = useTranslation()
@@ -76,7 +78,12 @@ export function CompaniesTable({
     pageSize,
   })
 
-  const columns = useColumns({ onEdit, onViewDepartments, onRefresh })
+  const columns = useColumns({
+    onEdit,
+    onViewDepartments,
+    onConfigureRateLimit,
+    onRefresh,
+  })
 
   const table = useReactTable({
     data,
@@ -160,10 +167,12 @@ export function CompaniesTable({
 function useColumns({
   onEdit,
   onViewDepartments,
+  onConfigureRateLimit,
   onRefresh,
 }: {
   onEdit: (company: Company) => void
   onViewDepartments: (company: Company) => void
+  onConfigureRateLimit: (company: Company) => void
   onRefresh: () => void
 }) {
   const { t } = useTranslation()
@@ -272,6 +281,10 @@ function useColumns({
               <DropdownMenuItem onClick={() => onViewDepartments(company)}>
                 <FolderTree className="mr-2 h-4 w-4" />
                 {t('View Departments')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onConfigureRateLimit(company)}>
+                <Gauge className='mr-2 h-4 w-4' />
+                {t('Configure RPM')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleToggleStatus(company.id, company.status, company.name)}

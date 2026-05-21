@@ -109,3 +109,60 @@ export const DEPARTMENT_LEVEL_LABELS: Record<number, { en: string; zh: string }>
   3: { en: 'Level 3', zh: '三级部门' },
   4: { en: 'Level 4', zh: '四级部门' },
 };
+
+// Rate Limit types
+export interface TimeSlot {
+  start_time: string; // HH:MM format
+  end_time: string;   // HH:MM format
+  weekdays?: number[]; // 0-6, 0 = Sunday
+}
+
+export interface OrganizationRateLimit {
+  id: number;
+  org_type: 'company' | 'department';
+  org_id: number;
+  org_name?: string;
+  model_id?: number;
+  model_name?: string;
+  time_slots: TimeSlot[];
+  rpms: number[];
+  priority: number;
+  status: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface CreateRateLimitRequest {
+  org_type: 'company' | 'department';
+  org_id: number;
+  model_id?: number;
+  model_name?: string;
+  time_slots: TimeSlot[];
+  rpms: number[];
+  priority?: number;
+  status?: number;
+}
+
+export interface UpdateRateLimitRequest {
+  time_slots: TimeSlot[];
+  rpms: number[];
+  priority?: number;
+  status?: number;
+}
+
+export interface EffectiveRateLimitData {
+  source: 'department' | 'company' | 'group' | 'global' | 'none';
+  org_name?: string;
+  org_type?: string;
+  org_id?: number;
+  model_id?: number;
+  model_name?: string;
+  time_slot?: TimeSlot;
+  rpm: number;
+  weekday?: number;
+}
+
+export interface RateLimitListResponse {
+  items: OrganizationRateLimit[];
+  total: number;
+}

@@ -26,7 +26,7 @@ import {
   type PaginationState,
 } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
-import { MoreHorizontal, Pencil, Trash2, Building2 } from 'lucide-react'
+import { MoreHorizontal, Pencil, Trash2, Building2, Gauge } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -55,6 +55,7 @@ interface DepartmentsTableProps {
   pageSize: number
   onPageChange: (page: number) => void
   onEdit: (department: Department) => void
+  onConfigureRateLimit: (department: Department) => void
   onRefresh: () => void
 }
 
@@ -65,6 +66,7 @@ export function DepartmentsTable({
   pageSize,
   onPageChange,
   onEdit,
+  onConfigureRateLimit,
   onRefresh,
 }: DepartmentsTableProps) {
   const { t } = useTranslation()
@@ -74,7 +76,7 @@ export function DepartmentsTable({
     pageSize,
   })
 
-  const columns = useColumns({ onEdit, onRefresh })
+  const columns = useColumns({ onEdit, onConfigureRateLimit, onRefresh })
 
   const table = useReactTable({
     data,
@@ -157,9 +159,11 @@ export function DepartmentsTable({
 
 function useColumns({
   onEdit,
+  onConfigureRateLimit,
   onRefresh,
 }: {
   onEdit: (department: Department) => void
+  onConfigureRateLimit: (department: Department) => void
   onRefresh: () => void
 }) {
   const { t } = useTranslation()
@@ -291,6 +295,10 @@ function useColumns({
               <MoreHorizontal className='h-4 w-4' />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onConfigureRateLimit(department)}>
+                <Gauge className='mr-2 h-4 w-4' />
+                {t('Configure RPM')}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleToggleStatus(department.id, department.status, department.name)}
               >

@@ -68,3 +68,24 @@ func (l *InMemoryRateLimiter) Request(key string, maxRequestNum int, duration in
 	}
 	return true
 }
+
+// Check parameter duration's unit is seconds
+func (l *InMemoryRateLimiter) Check(key string, maxRequestNum int, duration int64) bool {
+	if maxRequestNum == 0 {
+		return true
+	}
+
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+
+	queue, ok := l.store[key]
+	if !ok {
+		return true
+	}
+	if len(*queue) < maxRequestNum {
+		return true
+	}
+
+	now := time.Now().Unix()
+	return now-(*queue)[0] >= duration
+}
