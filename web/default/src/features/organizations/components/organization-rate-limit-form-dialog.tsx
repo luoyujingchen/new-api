@@ -70,7 +70,8 @@ const rateLimitRuleSchema = z.object({
   slots: z.array(timeSlotSchema).min(1),
 })
 
-type RateLimitRuleFormValues = z.infer<typeof rateLimitRuleSchema>
+type RateLimitRuleFormValues = z.output<typeof rateLimitRuleSchema>
+type RateLimitRuleFormInput = z.input<typeof rateLimitRuleSchema>
 
 type ModelOption = {
   value: string
@@ -88,7 +89,7 @@ type OrganizationRateLimitFormDialogProps = {
   isSubmitting: boolean
 }
 
-const DEFAULT_VALUES: RateLimitRuleFormValues = {
+const DEFAULT_VALUES: RateLimitRuleFormInput = {
   model_name: '',
   priority: 0,
   status: 1,
@@ -101,6 +102,9 @@ const DEFAULT_VALUES: RateLimitRuleFormValues = {
     },
   ],
 }
+
+const normalizeRateLimitStatus = (status?: number): 0 | 1 =>
+  status === 0 ? 0 : 1
 
 export function OrganizationRateLimitFormDialog({
   open,
@@ -115,7 +119,7 @@ export function OrganizationRateLimitFormDialog({
   const { t } = useTranslation()
   const isEditMode = !!editData
 
-  const form = useForm<RateLimitRuleFormValues>({
+  const form = useForm<RateLimitRuleFormInput, unknown, RateLimitRuleFormValues>({
     resolver: zodResolver(rateLimitRuleSchema),
     defaultValues: DEFAULT_VALUES,
   })
@@ -147,7 +151,7 @@ export function OrganizationRateLimitFormDialog({
       form.reset({
         model_name: editData.model_name ?? '',
         priority: editData.priority ?? 0,
-        status: editData.status,
+        status: normalizeRateLimitStatus(editData.status),
         slots: editData.time_slots.map((slot, index) => ({
           start_time: slot.start_time,
           end_time: slot.end_time,
@@ -163,7 +167,7 @@ export function OrganizationRateLimitFormDialog({
 
   const selectedModelName = form.watch('model_name')
   const selectedModel = modelOptions.find(
-    (option) => option.value === selectedModelName
+    (option) => option.value === (selectedModelName ?? '')
   )
 
   const handleSubmit = async (values: RateLimitRuleFormValues) => {
@@ -298,7 +302,7 @@ export function OrganizationRateLimitFormDialog({
                 <FormItem>
                   <FormLabel>{t('Status')}</FormLabel>
                   <Select
-                    onValueChange={(value) => field.onChange(Number(value))}
+                    onValueChange={(value) => field.onChange(value === '1' ? 1 : 0)}
                     value={String(field.value)}
                   >
                     <FormControl>

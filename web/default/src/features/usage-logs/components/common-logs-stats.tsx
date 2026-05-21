@@ -92,14 +92,24 @@ export function CommonLogsStats() {
         accent='bg-sky-500/70'
       />
       <StatBadge
-        label={t('RPM')}
+        label={t('Avg RPM')}
         value={stats?.rpm || 0}
         accent='bg-rose-500/65'
       />
       <StatBadge
-        label={t('TPM')}
+        label={t('Avg TPM')}
         value={stats?.tpm || 0}
         accent='bg-slate-400/70'
+      />
+      <StatBadge
+        label={t('Realtime RPM')}
+        value={stats?.realtime_rpm || 0}
+        accent='bg-emerald-500/65'
+      />
+      <StatBadge
+        label={t('Realtime TPM')}
+        value={stats?.realtime_tpm || 0}
+        accent='bg-violet-500/65'
       />
     </div>
   )

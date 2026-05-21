@@ -196,8 +196,10 @@ export interface LogOtherData {
  */
 export interface LogStatistics {
   quota: number
-  rpm: number
-  tpm: number
+  rpm: number        // 时间段内平均每分钟请求数
+  tpm: number        // 时间段内平均每分钟 token 数
+  realtime_rpm: number  // 实时最近1分钟请求数
+  realtime_tpm: number  // 实时最近1分钟 token 数
 }
 
 // ============================================================================
