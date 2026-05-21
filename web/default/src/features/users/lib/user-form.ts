@@ -32,6 +32,8 @@ export const userFormSchema = z.object({
   role: z.number().optional(),
   quota_dollars: z.number().min(0).optional(),
   group: z.string().optional(),
+  company_id: z.number().nullable().optional(),
+  department_id: z.number().nullable().optional(),
   remark: z.string().optional(),
 })
 
@@ -48,6 +50,8 @@ export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
   role: 1, // Default to common user
   quota_dollars: 0,
   group: DEFAULT_GROUP,
+  company_id: null,
+  department_id: null,
   remark: '',
 }
 
@@ -76,6 +80,7 @@ export function transformFormDataToPayload(
     payload.group = data.group
     payload.remark = data.remark || undefined
     payload.id = userId
+    // Note: company_id and department_id are updated separately via setUserDepartment API
   }
 
   return payload
@@ -92,6 +97,8 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     role: user.role,
     quota_dollars: quotaUnitsToDollars(user.quota),
     group: user.group || DEFAULT_GROUP,
+    company_id: user.company_id ?? null,
+    department_id: user.department_id ?? null,
     remark: user.remark || '',
   }
 }

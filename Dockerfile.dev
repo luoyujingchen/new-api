@@ -12,7 +12,7 @@ ENV GOEXPERIMENT=greenteagc
 WORKDIR /build
 
 ADD go.mod go.sum ./
-RUN go mod download
+RUN HTTP_PROXY=http://pproxy.huawei.com:8080 HTTPS_PROXY=http://pproxy.huawei.com:8080 go mod download
 
 COPY . .
 

@@ -56,6 +56,12 @@ import {
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { createUser, updateUser, getUser, getGroups } from '../api'
+import {
+  clearUserDepartment,
+  getAllCompanies,
+  getAllDepartments,
+  setUserDepartment,
+} from '../../organizations/api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   userFormSchema,
@@ -99,6 +105,28 @@ export function UsersMutateDrawer({
     defaultValues: USER_FORM_DEFAULT_VALUES,
   })
 
+  // Fetch companies
+  const { data: companiesData } = useQuery({
+    queryKey: ['companies', 'all'],
+    queryFn: () => getAllCompanies(1),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const companies = companiesData?.data || []
+
+  // Watch company_id to fetch departments
+  const selectedCompanyId = form.watch('company_id')
+
+  // Fetch departments based on selected company
+  const { data: departmentsData } = useQuery({
+    queryKey: ['departments', 'all', selectedCompanyId],
+    queryFn: () => getAllDepartments(selectedCompanyId ?? undefined, 1),
+    enabled: !!selectedCompanyId,
+    staleTime: 2 * 60 * 1000,
+  })
+
+  const departments = departmentsData?.data || []
+
   // Load existing data when updating
   useEffect(() => {
     if (open && isUpdate && currentRow) {
@@ -140,6 +168,22 @@ export function UsersMutateDrawer({
         : await createUser(payload)
 
       if (result.success) {
+        const userId = isUpdate ? currentRow!.id : (result.data as any)?.id
+
+        if (userId && (isUpdate || data.company_id !== null || data.department_id !== null)) {
+          const assignmentResult =
+            data.company_id === null && data.department_id === null
+              ? await clearUserDepartment(userId)
+              : await setUserDepartment(userId, {
+                  company_id: data.company_id,
+                  department_id: data.department_id,
+                })
+
+          if (!assignmentResult.success) {
+            return
+          }
+        }
+
         toast.success(
           isUpdate
             ? t(SUCCESS_MESSAGES.USER_UPDATED)
@@ -337,6 +381,90 @@ export function UsersMutateDrawer({
                               {groups.map((group) => (
                                 <SelectItem key={group} value={group}>
                                   {group}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='company_id'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Company (Optional)')}</FormLabel>
+                        <Select
+                          items={[
+                            { value: '', label: t('None') },
+                            ...companies.map((company) => ({
+                              value: String(company.id),
+                              label: company.name,
+                            })),
+                          ]}
+                          onValueChange={(value) => {
+                            const numValue = value ? Number(value) : null
+                            field.onChange(numValue)
+                            form.setValue('department_id', null)
+                          }}
+                          value={field.value ? String(field.value) : ''}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={t('Select a company')} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              <SelectItem value=''>{t('None')}</SelectItem>
+                              {companies.map((company) => (
+                                <SelectItem key={company.id} value={String(company.id)}>
+                                  {company.name}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='department_id'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Department (Optional)')}</FormLabel>
+                        <Select
+                          items={[
+                            { value: '', label: t('None') },
+                            ...departments.map((dept) => ({
+                              value: String(dept.id),
+                              label: `${'　'.repeat(Math.max(0, (dept.level || 1) - 1))}${dept.name}`,
+                            })),
+                          ]}
+                          onValueChange={(value) =>
+                            field.onChange(value ? Number(value) : null)
+                          }
+                          value={field.value ? String(field.value) : ''}
+                          disabled={!form.watch('company_id')}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={t('Select a department')} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              <SelectItem value=''>{t('None')}</SelectItem>
+                              {departments.map((dept) => (
+                                <SelectItem key={dept.id} value={String(dept.id)}>
+                                  {'　'.repeat(Math.max(0, (dept.level || 1) - 1))}
+                                  {dept.name}
                                 </SelectItem>
                               ))}
                             </SelectGroup>

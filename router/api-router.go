@@ -141,6 +141,9 @@ func SetApiRouter(router *gin.Engine) {
 				// Admin 2FA routes
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
+					// User department assignment routes
+					adminRoute.PUT("/:id/department", controller.SetUserDepartment)
+					adminRoute.DELETE("/:id/department", controller.ClearUserDepartment)
 			}
 		}
 
@@ -386,6 +389,37 @@ func SetApiRouter(router *gin.Engine) {
 			deploymentsRoute.PUT("/:id/name", controller.UpdateDeploymentName)
 			deploymentsRoute.POST("/:id/extend", controller.ExtendDeployment)
 			deploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
+			}
+
+			// Company management
+			companyRoute := apiRouter.Group("/company")
+			companyRoute.Use(middleware.AdminAuth())
+			{
+				companyRoute.GET("/", controller.GetCompanies)
+				companyRoute.GET("/all", controller.GetAllCompanies)
+				companyRoute.GET("/:id", controller.GetCompany)
+				companyRoute.POST("/", controller.CreateCompany)
+				companyRoute.PUT("/:id", controller.UpdateCompany)
+				companyRoute.DELETE("/:id", controller.DeleteCompany)
+				companyRoute.PATCH("/:id/status", controller.UpdateCompanyStatus)
+				companyRoute.GET("/:id/users", controller.GetCompanyUsers)
+			}
+
+			// Department management
+			departmentRoute := apiRouter.Group("/department")
+			departmentRoute.Use(middleware.AdminAuth())
+			{
+				departmentRoute.GET("/", controller.GetDepartments)
+				departmentRoute.GET("/all", controller.GetAllDepartments)
+				departmentRoute.GET("/tree", controller.GetDepartmentTree)
+				departmentRoute.GET("/:id", controller.GetDepartment)
+				departmentRoute.POST("/", controller.CreateDepartment)
+				departmentRoute.PUT("/:id", controller.UpdateDepartment)
+				departmentRoute.DELETE("/:id", controller.DeleteDepartment)
+				departmentRoute.POST("/:id/move", controller.MoveDepartment)
+				departmentRoute.PATCH("/:id/status", controller.UpdateDepartmentStatus)
+				departmentRoute.GET("/:id/users", controller.GetDepartmentUsers)
+			}
+
 		}
 	}
-}

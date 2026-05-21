@@ -237,6 +237,50 @@ export function useUsersColumns(): ColumnDef<User>[] {
       meta: { label: t('Group') },
     },
     {
+      accessorKey: 'company_id',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Company')} />
+      ),
+      cell: ({ row }) => {
+        const companyId = row.getValue('company_id') as number | null
+        const company = (row.original as any).company as { name: string } | undefined
+
+        if (!companyId) {
+          return <span className='text-muted-foreground'>-</span>
+        }
+
+        return (
+          <span className='text-sm'>
+            {company?.name || `ID: ${companyId}`}
+          </span>
+        )
+      },
+      enableSorting: false,
+      meta: { label: t('Company') },
+    },
+    {
+      accessorKey: 'department_id',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Department')} />
+      ),
+      cell: ({ row }) => {
+        const departmentId = row.getValue('department_id') as number | null
+        const department = (row.original as any).department as { name: string } | undefined
+
+        if (!departmentId) {
+          return <span className='text-muted-foreground'>-</span>
+        }
+
+        return (
+          <span className='text-sm'>
+            {department?.name || `ID: ${departmentId}`}
+          </span>
+        )
+      },
+      enableSorting: false,
+      meta: { label: t('Department') },
+    },
+    {
       accessorKey: 'role',
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title={t('Role')} />

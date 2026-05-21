@@ -33,6 +33,8 @@ import {
   CreditCard,
   ListTodo,
   Settings,
+  Building2,
+  FolderTree,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { WORKSPACE_IDS } from '@/components/layout/lib/workspace-registry'
@@ -144,6 +146,22 @@ export function useSidebarData(): SidebarData {
             title: t('Subscription Management'),
             url: '/subscriptions',
             icon: CreditCard,
+          },
+          {
+            title: t('Organization Management'),
+            icon: Building2,
+            items: [
+              {
+                title: t('Companies'),
+                url: '/organizations/companies',
+                icon: Building2,
+              },
+              {
+                title: t('Departments'),
+                url: '/organizations/departments',
+                icon: FolderTree,
+              },
+            ],
           },
           {
             title: t('System Settings'),

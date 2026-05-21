@@ -44,6 +44,18 @@ export const userSchema = z.object({
   used_quota: z.number(),
   request_count: z.number(),
   group: z.string(),
+  company_id: z.number().nullable().optional(),
+  department_id: z.number().nullable().optional(),
+  company: z.object({
+    id: z.number(),
+    name: z.string(),
+    code: z.string(),
+  }).optional(),
+  department: z.object({
+    id: z.number(),
+    name: z.string(),
+    level: z.number(),
+  }).optional(),
   aff_code: z.string().optional(),
   aff_count: z.number().optional(),
   aff_quota: z.number().optional(),

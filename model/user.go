@@ -41,6 +41,10 @@ type User struct {
 	UsedQuota        int            `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int            `json:"request_count" gorm:"type:int;default:0;"`               // request number
 	Group            string         `json:"group" gorm:"type:varchar(64);default:'default'"`
+	CompanyId        *int64         `json:"company_id,omitempty" gorm:"column:company_id;index"`         // 所属公司ID（可选）
+	DepartmentId     *int64         `json:"department_id,omitempty" gorm:"column:department_id;index"`  // 所属部门ID（可选）
+	Company          *Company       `json:"company,omitempty" gorm:"foreignKey:CompanyId"`              // 所属公司
+	Department       *Department    `json:"department,omitempty" gorm:"foreignKey:DepartmentId"`       // 所属部门
 	AffCode          string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount         int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
 	AffQuota         int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
@@ -210,8 +214,15 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 		return nil, 0, err
 	}
 
-	// Get paginated users within same transaction
-	err = tx.Unscoped().Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
+	// Get paginated users within same transaction, with company and department associations
+	err = tx.Unscoped().
+		Preload("Company").
+		Preload("Department").
+		Order("id desc").
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Omit("password").
+		Find(&users).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
