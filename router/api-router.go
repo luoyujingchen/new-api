@@ -285,6 +285,12 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
+		applicationSelfRoute := apiRouter.Group("/application")
+		applicationSelfRoute.Use(middleware.UserAuth())
+		{
+			applicationSelfRoute.GET("/self/all", controller.GetSelectableApplications)
+		}
+
 		redemptionRoute := apiRouter.Group("/redemption")
 		redemptionRoute.Use(middleware.AdminAuth())
 		{
@@ -389,49 +395,62 @@ func SetApiRouter(router *gin.Engine) {
 			deploymentsRoute.PUT("/:id/name", controller.UpdateDeploymentName)
 			deploymentsRoute.POST("/:id/extend", controller.ExtendDeployment)
 			deploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
-			}
-
-			// Company management
-			companyRoute := apiRouter.Group("/company")
-			companyRoute.Use(middleware.AdminAuth())
-			{
-				companyRoute.GET("/", controller.GetCompanies)
-				companyRoute.GET("/all", controller.GetAllCompanies)
-				companyRoute.GET("/:id", controller.GetCompany)
-				companyRoute.POST("/", controller.CreateCompany)
-				companyRoute.PUT("/:id", controller.UpdateCompany)
-				companyRoute.DELETE("/:id", controller.DeleteCompany)
-				companyRoute.PATCH("/:id/status", controller.UpdateCompanyStatus)
-				companyRoute.GET("/:id/users", controller.GetCompanyUsers)
-			}
-
-			// Department management
-			departmentRoute := apiRouter.Group("/department")
-			departmentRoute.Use(middleware.AdminAuth())
-			{
-				departmentRoute.GET("/", controller.GetDepartments)
-				departmentRoute.GET("/all", controller.GetAllDepartments)
-				departmentRoute.GET("/tree", controller.GetDepartmentTree)
-				departmentRoute.GET("/:id", controller.GetDepartment)
-				departmentRoute.POST("/", controller.CreateDepartment)
-				departmentRoute.PUT("/:id", controller.UpdateDepartment)
-				departmentRoute.DELETE("/:id", controller.DeleteDepartment)
-				departmentRoute.POST("/:id/move", controller.MoveDepartment)
-				departmentRoute.PATCH("/:id/status", controller.UpdateDepartmentStatus)
-				departmentRoute.GET("/:id/users", controller.GetDepartmentUsers)
-			}
-
-			// Organization rate limit management
-			rateLimitRoute := apiRouter.Group("/rate-limit")
-			rateLimitRoute.Use(middleware.AdminAuth())
-			{
-				rateLimitRoute.GET("/", controller.GetOrganizationRateLimits)
-				rateLimitRoute.POST("/", controller.CreateOrganizationRateLimit)
-				rateLimitRoute.GET("/:id", controller.GetOrganizationRateLimit)
-				rateLimitRoute.PUT("/:id", controller.UpdateOrganizationRateLimit)
-				rateLimitRoute.DELETE("/:id", controller.DeleteOrganizationRateLimit)
-				rateLimitRoute.GET("/user/:id", controller.GetUserEffectiveRateLimit)
-			}
-
 		}
+
+		// Company management
+		companyRoute := apiRouter.Group("/company")
+		companyRoute.Use(middleware.AdminAuth())
+		{
+			companyRoute.GET("/", controller.GetCompanies)
+			companyRoute.GET("/all", controller.GetAllCompanies)
+			companyRoute.GET("/:id", controller.GetCompany)
+			companyRoute.POST("/", controller.CreateCompany)
+			companyRoute.PUT("/:id", controller.UpdateCompany)
+			companyRoute.DELETE("/:id", controller.DeleteCompany)
+			companyRoute.PATCH("/:id/status", controller.UpdateCompanyStatus)
+			companyRoute.GET("/:id/users", controller.GetCompanyUsers)
+		}
+
+		// Department management
+		departmentRoute := apiRouter.Group("/department")
+		departmentRoute.Use(middleware.AdminAuth())
+		{
+			departmentRoute.GET("/", controller.GetDepartments)
+			departmentRoute.GET("/all", controller.GetAllDepartments)
+			departmentRoute.GET("/tree", controller.GetDepartmentTree)
+			departmentRoute.GET("/:id", controller.GetDepartment)
+			departmentRoute.POST("/", controller.CreateDepartment)
+			departmentRoute.PUT("/:id", controller.UpdateDepartment)
+			departmentRoute.DELETE("/:id", controller.DeleteDepartment)
+			departmentRoute.POST("/:id/move", controller.MoveDepartment)
+			departmentRoute.PATCH("/:id/status", controller.UpdateDepartmentStatus)
+			departmentRoute.GET("/:id/users", controller.GetDepartmentUsers)
+		}
+
+		// Application management
+		applicationRoute := apiRouter.Group("/application")
+		applicationRoute.Use(middleware.AdminAuth())
+		{
+			applicationRoute.GET("/", controller.GetApplications)
+			applicationRoute.GET("/all", controller.GetAllApplications)
+			applicationRoute.GET("/:id", controller.GetApplication)
+			applicationRoute.POST("/", controller.CreateApplication)
+			applicationRoute.PUT("/:id", controller.UpdateApplication)
+			applicationRoute.DELETE("/:id", controller.DeleteApplication)
+			applicationRoute.PATCH("/:id/status", controller.UpdateApplicationStatus)
+		}
+
+		// Organization rate limit management
+		rateLimitRoute := apiRouter.Group("/rate-limit")
+		rateLimitRoute.Use(middleware.AdminAuth())
+		{
+			rateLimitRoute.GET("/", controller.GetOrganizationRateLimits)
+			rateLimitRoute.POST("/", controller.CreateOrganizationRateLimit)
+			rateLimitRoute.GET("/:id", controller.GetOrganizationRateLimit)
+			rateLimitRoute.PUT("/:id", controller.UpdateOrganizationRateLimit)
+			rateLimitRoute.DELETE("/:id", controller.DeleteOrganizationRateLimit)
+			rateLimitRoute.GET("/user/:id", controller.GetUserEffectiveRateLimit)
+		}
+
 	}
+}

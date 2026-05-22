@@ -22,6 +22,8 @@ import (
 	"gorm.io/gorm"
 )
 
+var requestApplicationService = service.NewApplicationService()
+
 func validUserInfo(username string, role int) bool {
 	// check username is empty
 	if strings.TrimSpace(username) == "" {
@@ -402,6 +404,10 @@ func TokenAuth() func(c *gin.Context) {
 		if err != nil {
 			return
 		}
+		err = SetupContextForRequestApplication(c, token)
+		if err != nil {
+			return
+		}
 		c.Next()
 	}
 }
@@ -414,6 +420,9 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	c.Set("token_id", token.Id)
 	c.Set("token_key", token.Key)
 	c.Set("token_name", token.Name)
+	if token.ApplicationId != nil {
+		common.SetContextKey(c, constant.ContextKeyApplicationId, int(*token.ApplicationId))
+	}
 	c.Set("token_unlimited_quota", token.UnlimitedQuota)
 	if !token.UnlimitedQuota {
 		c.Set("token_quota", token.RemainQuota)
@@ -434,6 +443,51 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 			abortWithOpenAiMessage(c, http.StatusForbidden, "普通用户不支持指定渠道")
 			return fmt.Errorf("普通用户不支持指定渠道")
 		}
+	}
+	return nil
+}
+
+func SetupContextForRequestApplication(c *gin.Context, token *model.Token) error {
+	if c == nil || c.Request == nil {
+		return fmt.Errorf("request is nil")
+	}
+	if token == nil {
+		return fmt.Errorf("token is nil")
+	}
+
+	var application *model.Application
+	var err error
+	if token.ApplicationId != nil {
+		application, err = requestApplicationService.ValidateApplicationSelection(token.ApplicationId)
+		if err != nil {
+			switch {
+			case errors.Is(err, service.ErrApplicationDisabled):
+				abortWithOpenAiMessage(c, http.StatusForbidden, "当前 API Key 绑定的应用已被禁用")
+			case errors.Is(err, gorm.ErrRecordNotFound):
+				abortWithOpenAiMessage(c, http.StatusUnauthorized, "当前 API Key 绑定的应用不存在")
+			default:
+				abortWithOpenAiMessage(c, http.StatusInternalServerError, common.TranslateMessage(c, i18n.MsgDatabaseError))
+			}
+			return err
+		}
+		common.SetContextKey(c, constant.ContextKeyApplicationId, int(application.Id))
+		common.SetContextKey(c, constant.ContextKeyApplicationKey, application.AppKey)
+		common.SetContextKey(c, constant.ContextKeyApplicationName, application.Name)
+	}
+
+	appKey := strings.TrimSpace(c.Request.Header.Get("x-app-id"))
+	c.Request.Header.Del("X-App-Id")
+	if appKey == "" {
+		return nil
+	}
+
+	if application == nil {
+		abortWithOpenAiMessage(c, http.StatusUnauthorized, "当前 API Key 未绑定应用，不能使用 x-app-id")
+		return service.ErrTokenApplicationNotBound
+	}
+	if application.AppKey != appKey {
+		abortWithOpenAiMessage(c, http.StatusUnauthorized, "x-app-id 与当前 API Key 绑定应用不匹配")
+		return service.ErrTokenApplicationMismatch
 	}
 	return nil
 }

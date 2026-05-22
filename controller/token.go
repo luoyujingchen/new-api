@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,9 +10,11 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func buildMaskedTokenResponse(token *model.Token) *model.Token {
@@ -29,6 +32,21 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 		maskedTokens = append(maskedTokens, buildMaskedTokenResponse(token))
 	}
 	return maskedTokens
+}
+
+func validateTokenApplicationSelection(c *gin.Context, applicationId *int64) bool {
+	if _, err := applicationService.ValidateApplicationSelection(applicationId); err != nil {
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			common.ApiErrorMsg(c, "所选应用不存在")
+		case errors.Is(err, service.ErrApplicationDisabled):
+			common.ApiErrorMsg(c, "所选应用已禁用")
+		default:
+			common.ApiError(c, err)
+		}
+		return false
+	}
+	return true
 }
 
 func GetAllTokens(c *gin.Context) {
@@ -201,6 +219,9 @@ func AddToken(c *gin.Context) {
 		})
 		return
 	}
+	if !validateTokenApplicationSelection(c, token.ApplicationId) {
+		return
+	}
 	key, err := common.GenerateKey()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
@@ -221,6 +242,7 @@ func AddToken(c *gin.Context) {
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
+		ApplicationId:      token.ApplicationId,
 	}
 	err = cleanToken.Insert()
 	if err != nil {
@@ -271,6 +293,9 @@ func UpdateToken(c *gin.Context) {
 			return
 		}
 	}
+	if !validateTokenApplicationSelection(c, token.ApplicationId) {
+		return
+	}
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {
 		common.ApiError(c, err)
@@ -299,6 +324,7 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		cleanToken.ApplicationId = token.ApplicationId
 	}
 	err = cleanToken.Update()
 	if err != nil {

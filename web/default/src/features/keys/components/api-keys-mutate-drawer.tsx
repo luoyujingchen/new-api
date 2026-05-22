@@ -30,6 +30,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getUserModels, getUserGroups } from '@/lib/api'
+import { getSelectableApplications } from '@/features/applications/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 import { useStatus } from '@/hooks/use-status'
@@ -72,6 +73,7 @@ import {
   transformApiKeyToFormDefaults,
 } from '../lib'
 import { type ApiKey } from '../types'
+import { type Application } from '@/features/applications/types'
 import {
   ApiKeyGroupCombobox,
   type ApiKeyGroupOption,
@@ -141,8 +143,16 @@ export function ApiKeysMutateDrawer({
     staleTime: 5 * 60 * 1000,
   })
 
+  // Fetch applications
+  const { data: applicationsData } = useQuery({
+    queryKey: ['selectable-applications'],
+    queryFn: getSelectableApplications,
+    staleTime: 5 * 60 * 1000,
+  })
+
   const models = modelsData?.data || []
   const groupsRaw = groupsData?.data || {}
+  const applications = applicationsData?.data || []
   const groups: ApiKeyGroupOption[] = Object.entries(groupsRaw).map(
     ([key, info]) => ({
       value: key,
@@ -363,6 +373,35 @@ export function ApiKeysMutateDrawer({
                   )}
                 />
               )}
+
+              <FormField
+                control={form.control}
+                name="application_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Application')}</FormLabel>
+                    <FormControl>
+                      <select
+                        {...field}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <option value="">{t('No Application')}</option>
+                        {applications.map((app: Application) => (
+                          <option key={app.id} value={app.id}>
+                            {app.name}
+                          </option>
+                        ))}
+                      </select>
+                    </FormControl>
+                    <FormDescription>
+                      {t('Associate this API key with an application for usage tracking')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <FormField
                 control={form.control}

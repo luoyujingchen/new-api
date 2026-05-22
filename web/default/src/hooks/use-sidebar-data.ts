@@ -35,6 +35,7 @@ import {
   Settings,
   Building2,
   FolderTree,
+  AppWindow,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { WORKSPACE_IDS } from '@/components/layout/lib/workspace-registry'
@@ -162,6 +163,11 @@ export function useSidebarData(): SidebarData {
                 icon: FolderTree,
               },
             ],
+          },
+          {
+            title: t('Applications'),
+            url: '/applications/list',
+            icon: AppWindow,
           },
           {
             title: t('System Settings'),

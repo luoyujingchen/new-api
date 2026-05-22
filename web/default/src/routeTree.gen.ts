@@ -35,6 +35,7 @@ import { Route as authOauthRouteImport } from './routes/(auth)/oauth'
 import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-password'
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
 import { Route as AuthenticatedOrganizationsRouteRouteImport } from './routes/_authenticated/organizations/route'
+import { Route as AuthenticatedApplicationsRouteRouteImport } from './routes/_authenticated/applications/route'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet/index'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
@@ -49,6 +50,7 @@ import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenti
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
+import { Route as AuthenticatedApplicationsIndexRouteImport } from './routes/_authenticated/applications/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
 import { Route as AuthenticatedOrganizationsDepartmentsRouteImport } from './routes/_authenticated/organizations/departments'
 import { Route as AuthenticatedOrganizationsCompaniesRouteImport } from './routes/_authenticated/organizations/companies'
@@ -56,6 +58,7 @@ import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authen
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
+import { Route as AuthenticatedApplicationsListRouteImport } from './routes/_authenticated/applications/list'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
 import { Route as AuthenticatedSystemSettingsSiteIndexRouteImport } from './routes/_authenticated/system-settings/site/index'
 import { Route as AuthenticatedSystemSettingsSecurityIndexRouteImport } from './routes/_authenticated/system-settings/security/index'
@@ -202,6 +205,12 @@ const AuthenticatedOrganizationsRouteRoute =
     path: '/organizations',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedApplicationsRouteRoute =
+  AuthenticatedApplicationsRouteRouteImport.update({
+    id: '/applications',
+    path: '/applications',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const PricingModelIdIndexRoute = PricingModelIdIndexRouteImport.update({
   id: '/pricing/$modelId/',
   path: '/pricing/$modelId/',
@@ -283,6 +292,12 @@ const AuthenticatedChannelsIndexRoute =
     path: '/channels/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedApplicationsIndexRoute =
+  AuthenticatedApplicationsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedApplicationsRouteRoute,
+  } as any)
 const AuthenticatedUsageLogsSectionRoute =
   AuthenticatedUsageLogsSectionRouteImport.update({
     id: '/usage-logs/$section',
@@ -324,6 +339,12 @@ const AuthenticatedChatChatIdRoute = AuthenticatedChatChatIdRouteImport.update({
   path: '/chat/$chatId',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedApplicationsListRoute =
+  AuthenticatedApplicationsListRouteImport.update({
+    id: '/list',
+    path: '/list',
+    getParentRoute: () => AuthenticatedApplicationsRouteRoute,
+  } as any)
 const authUserResetRoute = authUserResetRouteImport.update({
   id: '/user/reset',
   path: '/user/reset',
@@ -418,6 +439,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/user-agreement': typeof UserAgreementRoute
+  '/applications': typeof AuthenticatedApplicationsRouteRouteWithChildren
   '/organizations': typeof AuthenticatedOrganizationsRouteRouteWithChildren
   '/system-settings': typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
@@ -440,6 +462,7 @@ export interface FileRoutesByFullPath {
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
+  '/applications/list': typeof AuthenticatedApplicationsListRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
@@ -447,6 +470,7 @@ export interface FileRoutesByFullPath {
   '/organizations/companies': typeof AuthenticatedOrganizationsCompaniesRoute
   '/organizations/departments': typeof AuthenticatedOrganizationsDepartmentsRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
+  '/applications/': typeof AuthenticatedApplicationsIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
@@ -500,6 +524,7 @@ export interface FileRoutesByTo {
   '/rankings': typeof RankingsIndexRoute
   '/setup': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
+  '/applications/list': typeof AuthenticatedApplicationsListRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
@@ -507,6 +532,7 @@ export interface FileRoutesByTo {
   '/organizations/companies': typeof AuthenticatedOrganizationsCompaniesRoute
   '/organizations/departments': typeof AuthenticatedOrganizationsDepartmentsRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
+  '/applications': typeof AuthenticatedApplicationsIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
@@ -543,6 +569,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/user-agreement': typeof UserAgreementRoute
+  '/_authenticated/applications': typeof AuthenticatedApplicationsRouteRouteWithChildren
   '/_authenticated/organizations': typeof AuthenticatedOrganizationsRouteRouteWithChildren
   '/_authenticated/system-settings': typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   '/(auth)/forgot-password': typeof authForgotPasswordRoute
@@ -565,6 +592,7 @@ export interface FileRoutesById {
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/(auth)/user/reset': typeof authUserResetRoute
+  '/_authenticated/applications/list': typeof AuthenticatedApplicationsListRoute
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
@@ -572,6 +600,7 @@ export interface FileRoutesById {
   '/_authenticated/organizations/companies': typeof AuthenticatedOrganizationsCompaniesRoute
   '/_authenticated/organizations/departments': typeof AuthenticatedOrganizationsDepartmentsRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
+  '/_authenticated/applications/': typeof AuthenticatedApplicationsIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
@@ -607,6 +636,7 @@ export interface FileRouteTypes {
     | '/'
     | '/privacy-policy'
     | '/user-agreement'
+    | '/applications'
     | '/organizations'
     | '/system-settings'
     | '/forgot-password'
@@ -629,6 +659,7 @@ export interface FileRouteTypes {
     | '/rankings/'
     | '/setup/'
     | '/user/reset'
+    | '/applications/list'
     | '/chat/$chatId'
     | '/dashboard/$section'
     | '/errors/$error'
@@ -636,6 +667,7 @@ export interface FileRouteTypes {
     | '/organizations/companies'
     | '/organizations/departments'
     | '/usage-logs/$section'
+    | '/applications/'
     | '/channels/'
     | '/dashboard/'
     | '/keys/'
@@ -689,6 +721,7 @@ export interface FileRouteTypes {
     | '/rankings'
     | '/setup'
     | '/user/reset'
+    | '/applications/list'
     | '/chat/$chatId'
     | '/dashboard/$section'
     | '/errors/$error'
@@ -696,6 +729,7 @@ export interface FileRouteTypes {
     | '/organizations/companies'
     | '/organizations/departments'
     | '/usage-logs/$section'
+    | '/applications'
     | '/channels'
     | '/dashboard'
     | '/keys'
@@ -731,6 +765,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/privacy-policy'
     | '/user-agreement'
+    | '/_authenticated/applications'
     | '/_authenticated/organizations'
     | '/_authenticated/system-settings'
     | '/(auth)/forgot-password'
@@ -753,6 +788,7 @@ export interface FileRouteTypes {
     | '/rankings/'
     | '/setup/'
     | '/(auth)/user/reset'
+    | '/_authenticated/applications/list'
     | '/_authenticated/chat/$chatId'
     | '/_authenticated/dashboard/$section'
     | '/_authenticated/errors/$error'
@@ -760,6 +796,7 @@ export interface FileRouteTypes {
     | '/_authenticated/organizations/companies'
     | '/_authenticated/organizations/departments'
     | '/_authenticated/usage-logs/$section'
+    | '/_authenticated/applications/'
     | '/_authenticated/channels/'
     | '/_authenticated/dashboard/'
     | '/_authenticated/keys/'
@@ -995,6 +1032,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOrganizationsRouteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/applications': {
+      id: '/_authenticated/applications'
+      path: '/applications'
+      fullPath: '/applications'
+      preLoaderRoute: typeof AuthenticatedApplicationsRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/pricing/$modelId/': {
       id: '/pricing/$modelId/'
       path: '/pricing/$modelId'
@@ -1093,6 +1137,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChannelsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/applications/': {
+      id: '/_authenticated/applications/'
+      path: '/'
+      fullPath: '/applications/'
+      preLoaderRoute: typeof AuthenticatedApplicationsIndexRouteImport
+      parentRoute: typeof AuthenticatedApplicationsRouteRoute
+    }
     '/_authenticated/usage-logs/$section': {
       id: '/_authenticated/usage-logs/$section'
       path: '/usage-logs/$section'
@@ -1141,6 +1192,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/chat/$chatId'
       preLoaderRoute: typeof AuthenticatedChatChatIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/applications/list': {
+      id: '/_authenticated/applications/list'
+      path: '/list'
+      fullPath: '/applications/list'
+      preLoaderRoute: typeof AuthenticatedApplicationsListRouteImport
+      parentRoute: typeof AuthenticatedApplicationsRouteRoute
     }
     '/(auth)/user/reset': {
       id: '/(auth)/user/reset'
@@ -1274,6 +1332,22 @@ const authRouteRouteWithChildren = authRouteRoute._addFileChildren(
   authRouteRouteChildren,
 )
 
+interface AuthenticatedApplicationsRouteRouteChildren {
+  AuthenticatedApplicationsListRoute: typeof AuthenticatedApplicationsListRoute
+  AuthenticatedApplicationsIndexRoute: typeof AuthenticatedApplicationsIndexRoute
+}
+
+const AuthenticatedApplicationsRouteRouteChildren: AuthenticatedApplicationsRouteRouteChildren =
+  {
+    AuthenticatedApplicationsListRoute: AuthenticatedApplicationsListRoute,
+    AuthenticatedApplicationsIndexRoute: AuthenticatedApplicationsIndexRoute,
+  }
+
+const AuthenticatedApplicationsRouteRouteWithChildren =
+  AuthenticatedApplicationsRouteRoute._addFileChildren(
+    AuthenticatedApplicationsRouteRouteChildren,
+  )
+
 interface AuthenticatedOrganizationsRouteRouteChildren {
   AuthenticatedOrganizationsCompaniesRoute: typeof AuthenticatedOrganizationsCompaniesRoute
   AuthenticatedOrganizationsDepartmentsRoute: typeof AuthenticatedOrganizationsDepartmentsRoute
@@ -1352,6 +1426,7 @@ const AuthenticatedSystemSettingsRouteRouteWithChildren =
   )
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedApplicationsRouteRoute: typeof AuthenticatedApplicationsRouteRouteWithChildren
   AuthenticatedOrganizationsRouteRoute: typeof AuthenticatedOrganizationsRouteRouteWithChildren
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
@@ -1374,6 +1449,8 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedApplicationsRouteRoute:
+    AuthenticatedApplicationsRouteRouteWithChildren,
   AuthenticatedOrganizationsRouteRoute:
     AuthenticatedOrganizationsRouteRouteWithChildren,
   AuthenticatedSystemSettingsRouteRoute:
