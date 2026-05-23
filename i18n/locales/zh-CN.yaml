@@ -278,3 +278,22 @@ custom_oauth.name_empty: "提供商名称不能为空"
 custom_oauth.has_bindings: "无法删除已有用户绑定的提供商"
 custom_oauth.binding_not_found: "OAuth 绑定不存在"
 custom_oauth.provider_id_field_invalid: "无法从提供商响应中提取用户 ID"
+
+# 公司管理
+company.name_exists: "公司名称已存在"
+company.code_exists: "公司编码已存在"
+company.has_departments: "公司下仍有部门，无法删除"
+company.has_users: "公司下仍有用户，无法删除"
+company.not_found: "公司不存在"
+
+# 部门管理
+department.not_found: "部门不存在"
+department.name_exists: "同一上级部门下已存在同名部门"
+department.parent_not_found: "上级部门不存在"
+department.parent_mismatch: "上级部门不属于同一公司"
+department.max_depth: "超过最大部门层级（4级）"
+department.has_children: "部门下仍有子部门，无法删除"
+department.has_users: "部门下仍有用户，无法删除"
+department.self_move: "不能将部门移动到自身下面"
+department.descendant_move: "不能将部门移动到自己的子部门下面"
+department.company_change: "不能更改现有部门所属公司"

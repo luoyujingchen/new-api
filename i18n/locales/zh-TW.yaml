@@ -278,3 +278,22 @@ custom_oauth.name_empty: "供應者名稱不能為空"
 custom_oauth.has_bindings: "無法刪除已有使用者綁定的供應者"
 custom_oauth.binding_not_found: "OAuth 綁定不存在"
 custom_oauth.provider_id_field_invalid: "無法從供應者響應中提取使用者 ID"
+
+# 公司管理
+company.name_exists: "公司名稱已存在"
+company.code_exists: "公司編碼已存在"
+company.has_departments: "公司下仍有部門，無法刪除"
+company.has_users: "公司下仍有使用者，無法刪除"
+company.not_found: "公司不存在"
+
+# 部門管理
+department.not_found: "部門不存在"
+department.name_exists: "同一上級部門下已存在同名部門"
+department.parent_not_found: "上級部門不存在"
+department.parent_mismatch: "上級部門不屬於同一公司"
+department.max_depth: "超過最大部門層級（4級）"
+department.has_children: "部門下仍有子部門，無法刪除"
+department.has_users: "部門下仍有使用者，無法刪除"
+department.self_move: "不能將部門移動到自身下面"
+department.descendant_move: "不能將部門移動到自己的子部門下面"
+department.company_change: "不能更改現有部門所屬公司"

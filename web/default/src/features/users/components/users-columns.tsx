@@ -237,6 +237,36 @@ export function useUsersColumns(): ColumnDef<User>[] {
       meta: { label: t('Group') },
     },
     {
+      accessorKey: 'company_id',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Company')} />
+      ),
+      cell: ({ row }) => {
+        const companyId = row.original.company_id
+        return (
+          <span className='text-muted-foreground text-sm'>
+            {companyId ? String(companyId) : '-'}
+          </span>
+        )
+      },
+      meta: { label: t('Company'), mobileHidden: true },
+    },
+    {
+      accessorKey: 'department_id',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Department')} />
+      ),
+      cell: ({ row }) => {
+        const deptId = row.original.department_id
+        return (
+          <span className='text-muted-foreground text-sm'>
+            {deptId ? String(deptId) : '-'}
+          </span>
+        )
+      },
+      meta: { label: t('Department'), mobileHidden: true },
+    },
+    {
       accessorKey: 'role',
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title={t('Role')} />

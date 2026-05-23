@@ -56,6 +56,7 @@ import {
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { createUser, updateUser, getUser, getGroups } from '../api'
+import { getAllCompanies, getAllDepartments, setUserDepartment, clearUserDepartment } from '../../organizations/api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   userFormSchema,
@@ -408,6 +409,11 @@ export function UsersMutateDrawer({
                 </div>
               )}
 
+              {/* Organization (Update only) */}
+              {isUpdate && (
+                <OrganizationFields form={form} currentRow={currentRow} triggerRefresh={refreshUserData} />
+              )}
+
               {/* Binding Information (Read-only) */}
               {isUpdate && (
                 <div className='space-y-4'>
@@ -462,5 +468,140 @@ export function UsersMutateDrawer({
         />
       )}
     </>
+  )
+}
+
+// Separate component for organization fields with its own data fetching
+function OrganizationFields({
+  form,
+  currentRow,
+  triggerRefresh,
+}: {
+  form: ReturnType<typeof useForm<UserFormValues>>
+  currentRow?: User
+  triggerRefresh: () => void
+}) {
+  const { t } = useTranslation()
+
+  const watchCompanyId = form.watch('company_id')
+
+  const { data: companiesData } = useQuery({
+    queryKey: ['all-companies-user-form'],
+    queryFn: async () => {
+      const res = await getAllCompanies()
+      return res.data || []
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const { data: departmentsData } = useQuery({
+    queryKey: ['departments-by-company', watchCompanyId],
+    queryFn: async () => {
+      if (!watchCompanyId) return []
+      const res = await getAllDepartments({ company_id: watchCompanyId })
+      return res.data || []
+    },
+    enabled: !!watchCompanyId,
+  })
+
+  const handleCompanyChange = (value: string) => {
+    const newCompanyId = Number(value)
+    form.setValue('company_id', newCompanyId || 0)
+    form.setValue('department_id', 0)
+  }
+
+  const handleDepartmentChange = (value: string) => {
+    form.setValue('department_id', Number(value) || 0)
+  }
+
+  const handleSaveOrg = async () => {
+    if (!currentRow) return
+    const companyId = form.getValues('company_id') || 0
+    const departmentId = form.getValues('department_id') || 0
+
+    if (companyId === 0 && departmentId === 0) {
+      await clearUserDepartment(currentRow.id)
+    } else {
+      await setUserDepartment(currentRow.id, companyId || undefined, departmentId || undefined)
+    }
+    triggerRefresh()
+  }
+
+  const companies = companiesData || []
+  const departments = departmentsData || []
+
+  return (
+    <div className='space-y-4'>
+      <h3 className='text-sm font-medium'>{t('Organization')}</h3>
+
+      <FormField
+        control={form.control}
+        name='company_id'
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>{t('Company (Optional)')}</FormLabel>
+            <Select
+              onValueChange={handleCompanyChange}
+              value={String(field.value || 0)}
+            >
+              <FormControl>
+                <SelectTrigger>
+                  <SelectValue placeholder={t('Select company')} />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                <SelectItem value='0'>{t('None')}</SelectItem>
+                {companies.map((c: { id: number; name: string }) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={form.control}
+        name='department_id'
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>{t('Department (Optional)')}</FormLabel>
+            <Select
+              onValueChange={handleDepartmentChange}
+              value={String(field.value || 0)}
+              disabled={!watchCompanyId}
+            >
+              <FormControl>
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      watchCompanyId
+                        ? t('Select department')
+                        : t('Select company first')
+                    }
+                  />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                <SelectItem value='0'>{t('None')}</SelectItem>
+                {departments.map((d: { id: number; name: string }) => (
+                  <SelectItem key={d.id} value={String(d.id)}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <Button type='button' variant='outline' onClick={handleSaveOrg}>
+        {t('Save Organization')}
+      </Button>
+    </div>
   )
 }

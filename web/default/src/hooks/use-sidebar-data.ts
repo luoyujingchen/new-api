@@ -33,6 +33,7 @@ import {
   CreditCard,
   ListTodo,
   Settings,
+  Building2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { WORKSPACE_IDS } from '@/components/layout/lib/workspace-registry'
@@ -134,6 +135,12 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+          },
+          {
+            title: t('Organization'),
+            url: '/organizations/companies',
+            activeUrls: ['/organizations'],
+            icon: Building2,
           },
           {
             title: t('Redemption Codes'),

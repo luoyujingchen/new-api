@@ -277,3 +277,22 @@ custom_oauth.name_empty: "Provider name cannot be empty"
 custom_oauth.has_bindings: "Cannot delete provider with existing user bindings"
 custom_oauth.binding_not_found: "OAuth binding not found"
 custom_oauth.provider_id_field_invalid: "Could not extract user ID from provider response"
+
+# Company messages
+company.name_exists: "Company name already exists"
+company.code_exists: "Company code already exists"
+company.has_departments: "Company still has departments, cannot delete"
+company.has_users: "Company still has users, cannot delete"
+company.not_found: "Company not found"
+
+# Department messages
+department.not_found: "Department not found"
+department.name_exists: "Department name already exists under the same parent"
+department.parent_not_found: "Parent department not found"
+department.parent_mismatch: "Parent department does not belong to the same company"
+department.max_depth: "Maximum department depth (4 levels) exceeded"
+department.has_children: "Department still has sub-departments, cannot delete"
+department.has_users: "Department still has users, cannot delete"
+department.self_move: "Cannot move department under itself"
+department.descendant_move: "Cannot move department under its own descendant"
+department.company_change: "Cannot change the company of an existing department"

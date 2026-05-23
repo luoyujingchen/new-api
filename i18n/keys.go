@@ -330,3 +330,26 @@ const (
 	MsgCustomOAuthBindingNotFound   = "custom_oauth.binding_not_found"
 	MsgCustomOAuthProviderIdInvalid = "custom_oauth.provider_id_field_invalid"
 )
+
+	// Company related messages
+	const (
+		MsgCompanyNameExists        = "company.name_exists"
+		MsgCompanyCodeExists        = "company.code_exists"
+		MsgCompanyHasDepartments    = "company.has_departments"
+		MsgCompanyHasUsers          = "company.has_users"
+		MsgCompanyNotFound          = "company.not_found"
+	)
+
+	// Department related messages
+	const (
+		MsgDepartmentNotFound       = "department.not_found"
+		MsgDepartmentNameExists     = "department.name_exists"
+		MsgDepartmentParentNotFound = "department.parent_not_found"
+		MsgDepartmentParentMismatch = "department.parent_mismatch"
+		MsgDepartmentMaxDepth       = "department.max_depth"
+		MsgDepartmentHasChildren    = "department.has_children"
+		MsgDepartmentHasUsers       = "department.has_users"
+		MsgDepartmentSelfMove       = "department.self_move"
+		MsgDepartmentDescendantMove = "department.descendant_move"
+		MsgDepartmentCompanyChange  = "department.company_change"
+	)
