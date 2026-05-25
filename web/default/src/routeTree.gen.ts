@@ -34,6 +34,7 @@ import { Route as authOtpRouteImport } from './routes/(auth)/otp'
 import { Route as authOauthRouteImport } from './routes/(auth)/oauth'
 import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-password'
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
+import { Route as AuthenticatedQueueRouteRouteImport } from './routes/_authenticated/queue/route'
 import { Route as AuthenticatedOrganizationsRouteRouteImport } from './routes/_authenticated/organizations/route'
 import { Route as AuthenticatedApplicationsRouteRouteImport } from './routes/_authenticated/applications/route'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
@@ -43,6 +44,7 @@ import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_authenticated/system-settings/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
+import { Route as AuthenticatedQueueIndexRouteImport } from './routes/_authenticated/queue/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedOrganizationsIndexRouteImport } from './routes/_authenticated/organizations/index'
@@ -52,6 +54,8 @@ import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedApplicationsIndexRouteImport } from './routes/_authenticated/applications/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
+import { Route as AuthenticatedQueueMonitorRouteImport } from './routes/_authenticated/queue/monitor'
+import { Route as AuthenticatedQueueConfigRouteImport } from './routes/_authenticated/queue/config'
 import { Route as AuthenticatedOrganizationsDepartmentsRouteImport } from './routes/_authenticated/organizations/departments'
 import { Route as AuthenticatedOrganizationsCompaniesRouteImport } from './routes/_authenticated/organizations/companies'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
@@ -199,6 +203,11 @@ const AuthenticatedSystemSettingsRouteRoute =
     path: '/system-settings',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedQueueRouteRoute = AuthenticatedQueueRouteRouteImport.update({
+  id: '/queue',
+  path: '/queue',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedOrganizationsRouteRoute =
   AuthenticatedOrganizationsRouteRouteImport.update({
     id: '/organizations',
@@ -251,6 +260,11 @@ const AuthenticatedRedemptionCodesIndexRoute =
     path: '/redemption-codes/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedQueueIndexRoute = AuthenticatedQueueIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedQueueRouteRoute,
+} as any)
 const AuthenticatedProfileIndexRoute =
   AuthenticatedProfileIndexRouteImport.update({
     id: '/profile/',
@@ -303,6 +317,18 @@ const AuthenticatedUsageLogsSectionRoute =
     id: '/usage-logs/$section',
     path: '/usage-logs/$section',
     getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedQueueMonitorRoute =
+  AuthenticatedQueueMonitorRouteImport.update({
+    id: '/monitor',
+    path: '/monitor',
+    getParentRoute: () => AuthenticatedQueueRouteRoute,
+  } as any)
+const AuthenticatedQueueConfigRoute =
+  AuthenticatedQueueConfigRouteImport.update({
+    id: '/config',
+    path: '/config',
+    getParentRoute: () => AuthenticatedQueueRouteRoute,
   } as any)
 const AuthenticatedOrganizationsDepartmentsRoute =
   AuthenticatedOrganizationsDepartmentsRouteImport.update({
@@ -441,6 +467,7 @@ export interface FileRoutesByFullPath {
   '/user-agreement': typeof UserAgreementRoute
   '/applications': typeof AuthenticatedApplicationsRouteRouteWithChildren
   '/organizations': typeof AuthenticatedOrganizationsRouteRouteWithChildren
+  '/queue': typeof AuthenticatedQueueRouteRouteWithChildren
   '/system-settings': typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
   '/oauth': typeof authOauthRoute
@@ -469,6 +496,8 @@ export interface FileRoutesByFullPath {
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/organizations/companies': typeof AuthenticatedOrganizationsCompaniesRoute
   '/organizations/departments': typeof AuthenticatedOrganizationsDepartmentsRoute
+  '/queue/config': typeof AuthenticatedQueueConfigRoute
+  '/queue/monitor': typeof AuthenticatedQueueMonitorRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/applications/': typeof AuthenticatedApplicationsIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
@@ -478,6 +507,7 @@ export interface FileRoutesByFullPath {
   '/organizations/': typeof AuthenticatedOrganizationsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
+  '/queue/': typeof AuthenticatedQueueIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
@@ -531,6 +561,8 @@ export interface FileRoutesByTo {
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/organizations/companies': typeof AuthenticatedOrganizationsCompaniesRoute
   '/organizations/departments': typeof AuthenticatedOrganizationsDepartmentsRoute
+  '/queue/config': typeof AuthenticatedQueueConfigRoute
+  '/queue/monitor': typeof AuthenticatedQueueMonitorRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/applications': typeof AuthenticatedApplicationsIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
@@ -540,6 +572,7 @@ export interface FileRoutesByTo {
   '/organizations': typeof AuthenticatedOrganizationsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
+  '/queue': typeof AuthenticatedQueueIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-settings': typeof AuthenticatedSystemSettingsIndexRoute
@@ -571,6 +604,7 @@ export interface FileRoutesById {
   '/user-agreement': typeof UserAgreementRoute
   '/_authenticated/applications': typeof AuthenticatedApplicationsRouteRouteWithChildren
   '/_authenticated/organizations': typeof AuthenticatedOrganizationsRouteRouteWithChildren
+  '/_authenticated/queue': typeof AuthenticatedQueueRouteRouteWithChildren
   '/_authenticated/system-settings': typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   '/(auth)/forgot-password': typeof authForgotPasswordRoute
   '/(auth)/oauth': typeof authOauthRoute
@@ -599,6 +633,8 @@ export interface FileRoutesById {
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
   '/_authenticated/organizations/companies': typeof AuthenticatedOrganizationsCompaniesRoute
   '/_authenticated/organizations/departments': typeof AuthenticatedOrganizationsDepartmentsRoute
+  '/_authenticated/queue/config': typeof AuthenticatedQueueConfigRoute
+  '/_authenticated/queue/monitor': typeof AuthenticatedQueueMonitorRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/applications/': typeof AuthenticatedApplicationsIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
@@ -608,6 +644,7 @@ export interface FileRoutesById {
   '/_authenticated/organizations/': typeof AuthenticatedOrganizationsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
+  '/_authenticated/queue/': typeof AuthenticatedQueueIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/_authenticated/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
@@ -638,6 +675,7 @@ export interface FileRouteTypes {
     | '/user-agreement'
     | '/applications'
     | '/organizations'
+    | '/queue'
     | '/system-settings'
     | '/forgot-password'
     | '/oauth'
@@ -666,6 +704,8 @@ export interface FileRouteTypes {
     | '/models/$section'
     | '/organizations/companies'
     | '/organizations/departments'
+    | '/queue/config'
+    | '/queue/monitor'
     | '/usage-logs/$section'
     | '/applications/'
     | '/channels/'
@@ -675,6 +715,7 @@ export interface FileRouteTypes {
     | '/organizations/'
     | '/playground/'
     | '/profile/'
+    | '/queue/'
     | '/redemption-codes/'
     | '/subscriptions/'
     | '/system-settings/'
@@ -728,6 +769,8 @@ export interface FileRouteTypes {
     | '/models/$section'
     | '/organizations/companies'
     | '/organizations/departments'
+    | '/queue/config'
+    | '/queue/monitor'
     | '/usage-logs/$section'
     | '/applications'
     | '/channels'
@@ -737,6 +780,7 @@ export interface FileRouteTypes {
     | '/organizations'
     | '/playground'
     | '/profile'
+    | '/queue'
     | '/redemption-codes'
     | '/subscriptions'
     | '/system-settings'
@@ -767,6 +811,7 @@ export interface FileRouteTypes {
     | '/user-agreement'
     | '/_authenticated/applications'
     | '/_authenticated/organizations'
+    | '/_authenticated/queue'
     | '/_authenticated/system-settings'
     | '/(auth)/forgot-password'
     | '/(auth)/oauth'
@@ -795,6 +840,8 @@ export interface FileRouteTypes {
     | '/_authenticated/models/$section'
     | '/_authenticated/organizations/companies'
     | '/_authenticated/organizations/departments'
+    | '/_authenticated/queue/config'
+    | '/_authenticated/queue/monitor'
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/applications/'
     | '/_authenticated/channels/'
@@ -804,6 +851,7 @@ export interface FileRouteTypes {
     | '/_authenticated/organizations/'
     | '/_authenticated/playground/'
     | '/_authenticated/profile/'
+    | '/_authenticated/queue/'
     | '/_authenticated/redemption-codes/'
     | '/_authenticated/subscriptions/'
     | '/_authenticated/system-settings/'
@@ -1025,6 +1073,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSystemSettingsRouteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/queue': {
+      id: '/_authenticated/queue'
+      path: '/queue'
+      fullPath: '/queue'
+      preLoaderRoute: typeof AuthenticatedQueueRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/organizations': {
       id: '/_authenticated/organizations'
       path: '/organizations'
@@ -1088,6 +1143,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRedemptionCodesIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/queue/': {
+      id: '/_authenticated/queue/'
+      path: '/'
+      fullPath: '/queue/'
+      preLoaderRoute: typeof AuthenticatedQueueIndexRouteImport
+      parentRoute: typeof AuthenticatedQueueRouteRoute
+    }
     '/_authenticated/profile/': {
       id: '/_authenticated/profile/'
       path: '/profile'
@@ -1150,6 +1212,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/usage-logs/$section'
       preLoaderRoute: typeof AuthenticatedUsageLogsSectionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/queue/monitor': {
+      id: '/_authenticated/queue/monitor'
+      path: '/monitor'
+      fullPath: '/queue/monitor'
+      preLoaderRoute: typeof AuthenticatedQueueMonitorRouteImport
+      parentRoute: typeof AuthenticatedQueueRouteRoute
+    }
+    '/_authenticated/queue/config': {
+      id: '/_authenticated/queue/config'
+      path: '/config'
+      fullPath: '/queue/config'
+      preLoaderRoute: typeof AuthenticatedQueueConfigRouteImport
+      parentRoute: typeof AuthenticatedQueueRouteRoute
     }
     '/_authenticated/organizations/departments': {
       id: '/_authenticated/organizations/departments'
@@ -1368,6 +1444,24 @@ const AuthenticatedOrganizationsRouteRouteWithChildren =
     AuthenticatedOrganizationsRouteRouteChildren,
   )
 
+interface AuthenticatedQueueRouteRouteChildren {
+  AuthenticatedQueueConfigRoute: typeof AuthenticatedQueueConfigRoute
+  AuthenticatedQueueMonitorRoute: typeof AuthenticatedQueueMonitorRoute
+  AuthenticatedQueueIndexRoute: typeof AuthenticatedQueueIndexRoute
+}
+
+const AuthenticatedQueueRouteRouteChildren: AuthenticatedQueueRouteRouteChildren =
+  {
+    AuthenticatedQueueConfigRoute: AuthenticatedQueueConfigRoute,
+    AuthenticatedQueueMonitorRoute: AuthenticatedQueueMonitorRoute,
+    AuthenticatedQueueIndexRoute: AuthenticatedQueueIndexRoute,
+  }
+
+const AuthenticatedQueueRouteRouteWithChildren =
+  AuthenticatedQueueRouteRoute._addFileChildren(
+    AuthenticatedQueueRouteRouteChildren,
+  )
+
 interface AuthenticatedSystemSettingsRouteRouteChildren {
   AuthenticatedSystemSettingsIndexRoute: typeof AuthenticatedSystemSettingsIndexRoute
   AuthenticatedSystemSettingsAuthSectionRoute: typeof AuthenticatedSystemSettingsAuthSectionRoute
@@ -1428,6 +1522,7 @@ const AuthenticatedSystemSettingsRouteRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedApplicationsRouteRoute: typeof AuthenticatedApplicationsRouteRouteWithChildren
   AuthenticatedOrganizationsRouteRoute: typeof AuthenticatedOrganizationsRouteRouteWithChildren
+  AuthenticatedQueueRouteRoute: typeof AuthenticatedQueueRouteRouteWithChildren
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
@@ -1453,6 +1548,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedApplicationsRouteRouteWithChildren,
   AuthenticatedOrganizationsRouteRoute:
     AuthenticatedOrganizationsRouteRouteWithChildren,
+  AuthenticatedQueueRouteRoute: AuthenticatedQueueRouteRouteWithChildren,
   AuthenticatedSystemSettingsRouteRoute:
     AuthenticatedSystemSettingsRouteRouteWithChildren,
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,

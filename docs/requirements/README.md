@@ -31,6 +31,7 @@ docs/requirements/
 - `organization-shared-time-slot-rpm-limits/`
 - `usage-log-period-and-realtime-rpm-tpm-stats/`
 - `application-management-and-x-app-id-validation/`
+- `request-queuing-strategy/`
 
 公共材料：
 

@@ -64,6 +64,10 @@ const createRateLimitSchema = (t: (key: string) => string) =>
     ModelRequestRateLimitDurationMinutes: z.number().min(0),
     ModelRequestRateLimitCount: z.number().min(0).max(100000000),
     ModelRequestRateLimitSuccessCount: z.number().min(1).max(100000000),
+    QueueEnabled: z.boolean(),
+    QueueDefaultTimeout: z.number().min(1).max(100000000),
+    QueueMaxTimeout: z.number().min(1).max(100000000),
+    QueueGlobalMaxSize: z.number().min(0).max(100000000),
     ModelRequestRateLimitGroup: z
       .string()
       .optional()
@@ -127,6 +131,31 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                   <FormDescription>
                     {t(
                       'This controls model request rate limiting. Web/API route throttling is configured by environment variables and may still return 429.'
+                    )}
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='QueueEnabled'
+            render={({ field }) => (
+              <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                <div className='space-y-0.5'>
+                  <FormLabel className='text-base'>
+                    {t('Enable request queue')}
+                  </FormLabel>
+                  <FormDescription>
+                    {t(
+                      'When model rate limits are hit, supported relay requests wait in a per-model queue instead of failing immediately.'
                     )}
                   </FormDescription>
                 </div>
@@ -227,6 +256,98 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                   </FormControl>
                   <FormDescription>
                     {t('Only successful requests')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className='grid gap-4 md:grid-cols-3'>
+            <FormField
+              control={form.control}
+              name='QueueDefaultTimeout'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Default queue timeout')}</FormLabel>
+                  <FormControl>
+                    <div className='flex items-center gap-2'>
+                      <Input
+                        type='number'
+                        min={1}
+                        step={1}
+                        {...field}
+                        onChange={(e) =>
+                          field.onChange(Math.max(1, parseInt(e.target.value) || 1))
+                        }
+                      />
+                      <span className='text-muted-foreground text-sm'>
+                        {t('seconds')}
+                      </span>
+                    </div>
+                  </FormControl>
+                  <FormDescription>
+                    {t('Fallback timeout for queued requests')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='QueueMaxTimeout'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Maximum queue timeout')}</FormLabel>
+                  <FormControl>
+                    <div className='flex items-center gap-2'>
+                      <Input
+                        type='number'
+                        min={1}
+                        step={1}
+                        {...field}
+                        onChange={(e) =>
+                          field.onChange(Math.max(1, parseInt(e.target.value) || 1))
+                        }
+                      />
+                      <span className='text-muted-foreground text-sm'>
+                        {t('seconds')}
+                      </span>
+                    </div>
+                  </FormControl>
+                  <FormDescription>
+                    {t('Upper bound applied to per-request queue timeout values')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='QueueGlobalMaxSize'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Default queue size')}</FormLabel>
+                  <FormControl>
+                    <div className='flex items-center gap-2'>
+                      <Input
+                        type='number'
+                        min={0}
+                        step={1}
+                        {...field}
+                        onChange={(e) =>
+                          field.onChange(Math.max(0, parseInt(e.target.value) || 0))
+                        }
+                      />
+                      <span className='text-muted-foreground text-sm'>
+                        {t('requests')}
+                      </span>
+                    </div>
+                  </FormControl>
+                  <FormDescription>
+                    {t('Default per-model queue capacity, 0 = unlimited')}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { CircleQuestionMark } from 'lucide-react'
+import { Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -47,7 +47,7 @@ export function LearnMore({
         render={<Button variant='outline' size='icon' />}
       >
         <span className='sr-only'>{t('Learn more')}</span>
-        <CircleQuestionMark className='size-4 [&>circle]:hidden' />
+        <Info className='size-3 opacity-75' />
       </PopoverTrigger>
       <PopoverContent
         side='top'

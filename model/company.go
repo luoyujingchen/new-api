@@ -13,6 +13,7 @@ type Company struct {
 	Description string         `json:"description,omitempty" gorm:"type:text"`
 	Status      int            `json:"status" gorm:"type:int;default:1;index"` // 1=enabled, 0=disabled
 	SortOrder   int            `json:"sort_order" gorm:"type:int;default:0"`   // 排序字段
+	QueuePriority int          `json:"queue_priority" gorm:"type:int;default:5"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 	CreatedAt   int64          `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt   int64          `json:"updated_at" gorm:"autoUpdateTime"`

@@ -417,27 +417,27 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 		return fmt.Errorf("token is nil")
 	}
 	c.Set("id", token.UserId)
-	c.Set("token_id", token.Id)
-	c.Set("token_key", token.Key)
+	common.SetContextKey(c, constant.ContextKeyTokenId, token.Id)
+	common.SetContextKey(c, constant.ContextKeyTokenKey, token.Key)
 	c.Set("token_name", token.Name)
 	if token.ApplicationId != nil {
 		common.SetContextKey(c, constant.ContextKeyApplicationId, int(*token.ApplicationId))
 	}
-	c.Set("token_unlimited_quota", token.UnlimitedQuota)
+	common.SetContextKey(c, constant.ContextKeyTokenUnlimited, token.UnlimitedQuota)
 	if !token.UnlimitedQuota {
 		c.Set("token_quota", token.RemainQuota)
 	}
 	if token.ModelLimitsEnabled {
-		c.Set("token_model_limit_enabled", true)
-		c.Set("token_model_limit", token.GetModelLimitsMap())
+		common.SetContextKey(c, constant.ContextKeyTokenModelLimitEnabled, true)
+		common.SetContextKey(c, constant.ContextKeyTokenModelLimit, token.GetModelLimitsMap())
 	} else {
-		c.Set("token_model_limit_enabled", false)
+		common.SetContextKey(c, constant.ContextKeyTokenModelLimitEnabled, false)
 	}
 	common.SetContextKey(c, constant.ContextKeyTokenGroup, token.Group)
 	common.SetContextKey(c, constant.ContextKeyTokenCrossGroupRetry, token.CrossGroupRetry)
 	if len(parts) > 1 {
 		if model.IsAdmin(token.UserId) {
-			c.Set("specific_channel_id", parts[1])
+			common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, parts[1])
 		} else {
 			c.Header("specific_channel_version", "701e3ae1dc3f7975556d354e0675168d004891c8")
 			abortWithOpenAiMessage(c, http.StatusForbidden, "普通用户不支持指定渠道")

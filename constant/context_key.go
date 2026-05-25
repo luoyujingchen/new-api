@@ -52,8 +52,11 @@ const (
 	ContextKeyUserStatus  ContextKey = "user_status"
 	ContextKeyUserEmail   ContextKey = "user_email"
 	ContextKeyUserGroup   ContextKey = "user_group"
+	ContextKeyUserCompanyId ContextKey = "user_company_id"
 	ContextKeyUsingGroup  ContextKey = "group"
 	ContextKeyUserName    ContextKey = "username"
+	ContextKeyQueueRequired ContextKey = "queue_required"
+	ContextKeyQueueModelName ContextKey = "queue_model_name"
 
 	ContextKeyLocalCountTokens ContextKey = "local_count_tokens"
 

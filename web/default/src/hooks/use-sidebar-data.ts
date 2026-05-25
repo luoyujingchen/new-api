@@ -36,6 +36,7 @@ import {
   Building2,
   FolderTree,
   AppWindow,
+  Gauge,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { WORKSPACE_IDS } from '@/components/layout/lib/workspace-registry'
@@ -168,6 +169,16 @@ export function useSidebarData(): SidebarData {
             title: t('Applications'),
             url: '/applications/list',
             icon: AppWindow,
+          },
+          {
+            title: t('Queue Monitor'),
+            url: '/queue/monitor',
+            icon: Gauge,
+          },
+          {
+            title: t('Queue Config'),
+            url: '/queue/config',
+            icon: Settings,
           },
           {
             title: t('System Settings'),

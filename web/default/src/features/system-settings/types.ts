@@ -318,6 +318,10 @@ export type SecuritySettings = {
   ModelRequestRateLimitSuccessCount: number
   ModelRequestRateLimitDurationMinutes: number
   ModelRequestRateLimitGroup: string
+  QueueEnabled: boolean
+  QueueDefaultTimeout: number
+  QueueMaxTimeout: number
+  QueueGlobalMaxSize: number
   CheckSensitiveEnabled: boolean
   CheckSensitiveOnPromptEnabled: boolean
   SensitiveWords: string

@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
@@ -241,6 +242,8 @@ func AddToken(c *gin.Context) {
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
+		QueuePriority:      setting.NormalizeQueuePriority(token.QueuePriority),
+		QueueTimeout:       setting.NormalizeQueueTimeoutOption(token.QueueTimeout),
 		CrossGroupRetry:    token.CrossGroupRetry,
 		ApplicationId:      token.ApplicationId,
 	}
@@ -323,6 +326,8 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
+		cleanToken.QueuePriority = setting.NormalizeQueuePriority(token.QueuePriority)
+		cleanToken.QueueTimeout = setting.NormalizeQueueTimeoutOption(token.QueueTimeout)
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 		cleanToken.ApplicationId = token.ApplicationId
 	}

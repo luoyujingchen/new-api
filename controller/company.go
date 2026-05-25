@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -54,6 +55,7 @@ func GetCompanies(c *gin.Context) {
 			Description:     company.Description,
 			Status:          company.Status,
 			SortOrder:       company.SortOrder,
+			QueuePriority:   company.QueuePriority,
 			CreatedAt:       company.CreatedAt,
 			UpdatedAt:       company.UpdatedAt,
 			DepartmentCount: deptCount,
@@ -114,6 +116,7 @@ func GetCompany(c *gin.Context) {
 		Description:    company.Description,
 		Status:         company.Status,
 		SortOrder:      company.SortOrder,
+		QueuePriority:  company.QueuePriority,
 		CreatedAt:      company.CreatedAt,
 		UpdatedAt:      company.UpdatedAt,
 		DepartmentCount: deptCount,
@@ -138,6 +141,7 @@ func CreateCompany(c *gin.Context) {
 		req.Description,
 		req.Status,
 		req.SortOrder,
+		setting.NormalizeQueuePriority(req.QueuePriority),
 	)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -155,6 +159,7 @@ func CreateCompany(c *gin.Context) {
 		Description: company.Description,
 		Status:      company.Status,
 		SortOrder:   company.SortOrder,
+		QueuePriority: company.QueuePriority,
 		CreatedAt:   company.CreatedAt,
 		UpdatedAt:   company.UpdatedAt,
 	}
@@ -185,6 +190,7 @@ func UpdateCompany(c *gin.Context) {
 		req.Description,
 		req.Status,
 		req.SortOrder,
+		setting.NormalizeQueuePriority(req.QueuePriority),
 	)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -204,6 +210,7 @@ func UpdateCompany(c *gin.Context) {
 		Description: company.Description,
 		Status:      company.Status,
 		SortOrder:   company.SortOrder,
+		QueuePriority: company.QueuePriority,
 		CreatedAt:   company.CreatedAt,
 		UpdatedAt:   company.UpdatedAt,
 	}

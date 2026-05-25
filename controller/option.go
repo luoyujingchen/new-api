@@ -286,6 +286,33 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "QueueDefaultTimeout":
+		err = setting.CheckQueueDefaultTimeout(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case "QueueMaxTimeout":
+		err = setting.CheckQueueMaxTimeout(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case "QueueGlobalMaxSize":
+		err = setting.CheckQueueGlobalMaxSize(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "AutomaticDisableStatusCodes":
 		_, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string))
 		if err != nil {

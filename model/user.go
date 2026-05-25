@@ -68,6 +68,10 @@ func (user *User) ToBaseUser() *UserBase {
 		Username: user.Username,
 		Setting:  user.Setting,
 		Email:    user.Email,
+		CompanyLoaded: true,
+	}
+	if user.CompanyId != nil {
+		cache.CompanyId = *user.CompanyId
 	}
 	return cache
 }

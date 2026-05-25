@@ -99,6 +99,7 @@ func main() {
 
 	// 热更新配置
 	go model.SyncOptions(common.SyncFrequency)
+	service.StartRequestQueueScheduler()
 
 	// 数据看板
 	go model.UpdateQuotaData()

@@ -172,45 +172,32 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 			return
 		}
 
-		// 计算限流参数
-		duration := int64(setting.ModelRequestRateLimitDurationMinutes * 60)
-		totalMaxCount := setting.ModelRequestRateLimitCount
-		successMaxCount := setting.ModelRequestRateLimitSuccessCount
-		userId := c.GetInt("id")
-		keys := getUserRateLimitKeys(userId)
-
-		var requestModelName string
-		if modelRequest, _, err := getModelRequest(c); err == nil && modelRequest != nil {
-			requestModelName = modelRequest.Model
+		requestModelName := resolveQueueModelName(c)
+		config := buildModelRateLimitConfig(c, requestModelName)
+		allowed, rejectMessage, err := tryAcquireModelRateLimit(config)
+		if err != nil {
+			fmt.Println("检查请求限制失败:", err.Error())
+			abortWithOpenAiMessage(c, http.StatusInternalServerError, "rate_limit_check_failed")
+			return
+		}
+		if !allowed {
+			shouldQueue := requestModelName != "" && isQueueSupportedRelayRequest(c) && setting.QueueEnabled && service.GetRequestQueueService().IsQueueEnabledForModel(requestModelName)
+			if shouldQueue {
+				common.SetContextKey(c, constant.ContextKeyQueueRequired, true)
+				common.SetContextKey(c, constant.ContextKeyQueueModelName, requestModelName)
+				c.Next()
+				if c.Writer.Status() < http.StatusBadRequest {
+					recordModelRateLimitSuccess(config)
+				}
+				return
+			}
+			abortWithOpenAiMessage(c, http.StatusTooManyRequests, rejectMessage)
+			return
 		}
 
-		// 获取分组
-		group := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
-		if group == "" {
-			group = common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-		}
-
-		// 获取分组的限流配置
-		groupTotalCount, groupSuccessCount, found := setting.GetGroupRateLimit(group)
-		if found {
-			totalMaxCount = groupTotalCount
-			successMaxCount = groupSuccessCount
-		}
-
-		// 新增：检查组织和部门限流规则
-		orgLimit, err := checkOrganizationRateLimit(userId, requestModelName, time.Now())
-		if err == nil && orgLimit != nil && orgLimit.Rpm > 0 {
-			// 组织规则优先于分组和全局限流
-			totalMaxCount = orgLimit.Rpm
-			successMaxCount = orgLimit.Rpm
-			keys = getOrganizationRateLimitKeys(orgLimit)
-		}
-
-		// 根据存储类型选择并执行限流处理器
-		if common.RedisEnabled {
-			redisRateLimitHandler(duration, totalMaxCount, successMaxCount, keys)(c)
-		} else {
-			memoryRateLimitHandler(duration, totalMaxCount, successMaxCount, keys)(c)
+		c.Next()
+		if c.Writer.Status() < http.StatusBadRequest {
+			recordModelRateLimitSuccess(config)
 		}
 	}
 }

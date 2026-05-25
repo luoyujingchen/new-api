@@ -14,7 +14,7 @@ func NewCompanyService() *CompanyService {
 }
 
 // CreateCompany 创建公司
-func (s *CompanyService) CreateCompany(name, code, description string, status int, sortOrder int) (*model.Company, error) {
+func (s *CompanyService) CreateCompany(name, code, description string, status int, sortOrder int, queuePriority int) (*model.Company, error) {
 	// 检查代码是否重复
 	var cnt int64
 	if err := model.DB.Model(&model.Company{}).Where("code = ?", code).Count(&cnt).Error; err != nil {
@@ -38,6 +38,7 @@ func (s *CompanyService) CreateCompany(name, code, description string, status in
 		Description: description,
 		Status:      status,
 		SortOrder:   sortOrder,
+		QueuePriority: queuePriority,
 	}
 
 	if err := company.Insert(); err != nil {
@@ -48,7 +49,7 @@ func (s *CompanyService) CreateCompany(name, code, description string, status in
 }
 
 // UpdateCompany 更新公司
-func (s *CompanyService) UpdateCompany(id int64, name, code, description string, status int, sortOrder int) error {
+func (s *CompanyService) UpdateCompany(id int64, name, code, description string, status int, sortOrder int, queuePriority int) error {
 	company, err := model.GetCompanyByID(id)
 	if err != nil {
 		return err
@@ -77,6 +78,7 @@ func (s *CompanyService) UpdateCompany(id int64, name, code, description string,
 	company.Description = description
 	company.Status = status
 	company.SortOrder = sortOrder
+	company.QueuePriority = queuePriority
 
 	return company.Update()
 }

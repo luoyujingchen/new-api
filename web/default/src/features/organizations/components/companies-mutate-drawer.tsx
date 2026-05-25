@@ -58,6 +58,7 @@ const companyFormSchema = z.object({
   description: z.string().max(500, 'Description is too long').optional(),
   status: z.number().int(),
   sort_order: z.number().int(),
+  queue_priority: z.number().int().min(1).max(10),
 })
 
 type CompanyFormValues = z.infer<typeof companyFormSchema>
@@ -68,6 +69,7 @@ const DEFAULT_VALUES: CompanyFormValues = {
   description: '',
   status: 1,
   sort_order: 0,
+  queue_priority: 5,
 }
 
 interface CompaniesMutateDrawerProps {
@@ -100,6 +102,7 @@ export function CompaniesMutateDrawer({
         description: currentRow.description || '',
         status: currentRow.status,
         sort_order: currentRow.sort_order,
+        queue_priority: currentRow.queue_priority || 5,
       })
     } else if (open && !isUpdate) {
       form.reset(DEFAULT_VALUES)
@@ -115,6 +118,7 @@ export function CompaniesMutateDrawer({
         description: data.description,
         status: data.status,
         sort_order: data.sort_order,
+        queue_priority: data.queue_priority,
       }
 
       const result = isUpdate
@@ -228,6 +232,43 @@ export function CompaniesMutateDrawer({
                           {option.labelZh}
                         </SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="queue_priority"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Queue Priority')}</FormLabel>
+                  <Select
+                    onValueChange={(value) => {
+                      if (value !== null) {
+                        field.onChange(parseInt(value, 10))
+                      }
+                    }}
+                    value={String(field.value)}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {Array.from({ length: 10 }, (_, index) => index + 1).map(
+                        (priority) => (
+                          <SelectItem
+                            key={priority}
+                            value={String(priority)}
+                          >
+                            {priority}
+                          </SelectItem>
+                        )
+                      )}
                     </SelectContent>
                   </Select>
                   <FormMessage />

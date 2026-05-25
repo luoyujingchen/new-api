@@ -10,6 +10,7 @@ export interface Company {
   description?: string;
   status: number; // 1 = enabled, 0 = disabled
   sort_order: number;
+  queue_priority: number;
   created_at: number;
   updated_at: number;
   department_count?: number;
@@ -22,6 +23,7 @@ export interface CompanyFormData {
   description?: string;
   status: number;
   sort_order: number;
+  queue_priority: number;
 }
 
 // Department types

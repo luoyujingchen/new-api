@@ -51,6 +51,13 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Sheet,
   SheetClose,
   SheetContent,
@@ -79,6 +86,10 @@ import {
   type ApiKeyGroupOption,
 } from './api-key-group-combobox'
 import { useApiKeys } from './api-keys-provider'
+
+const QUEUE_PRIORITY_OPTIONS = Array.from({ length: 10 }, (_, index) =>
+  String(index + 1)
+)
 
 type ApiKeyMutateDrawerProps = {
   open: boolean
@@ -582,6 +593,78 @@ export function ApiKeysMutateDrawer({
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className='space-y-3 border-t p-3 sm:space-y-4 sm:p-4'>
+                    <FormField
+                      control={form.control}
+                      name='queue_priority'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Queue Priority')}</FormLabel>
+                          <Select
+                            onValueChange={(value) => {
+                              if (value !== null) {
+                                field.onChange(parseInt(value, 10))
+                              }
+                            }}
+                            value={String(field.value)}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {QUEUE_PRIORITY_OPTIONS.map((value) => (
+                                <SelectItem key={value} value={value}>
+                                  {value}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            {t(
+                              'Higher priority requests get more scheduling chances when the model queue is busy.'
+                            )}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='queue_timeout'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Queue Timeout (seconds)')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type='number'
+                              min='0'
+                              step='1'
+                              placeholder={t(
+                                '0 uses the global queue timeout'
+                              )}
+                              onChange={(e) =>
+                                field.onChange(
+                                  Math.max(
+                                    0,
+                                    parseInt(e.target.value, 10) || 0
+                                  )
+                                )
+                              }
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {t(
+                              'Set how long this key can wait in queue. Use 0 to follow the system default.'
+                            )}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
                     <FormField
                       control={form.control}
                       name='model_limits'

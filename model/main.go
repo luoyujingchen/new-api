@@ -284,6 +284,7 @@ func migrateDB() error {
 		&PerfMetric{},
 		&Company{},
 		&Department{},
+		&QueueConfig{},
 		&OrganizationRateLimit{},
 	)
 	if err != nil {
@@ -340,6 +341,7 @@ func migrateDBFast() error {
 		{&PerfMetric{}, "PerfMetric"},
 		{&Company{}, "Company"},
 		{&Department{}, "Department"},
+		{&QueueConfig{}, "QueueConfig"},
 		{&OrganizationRateLimit{}, "OrganizationRateLimit"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大

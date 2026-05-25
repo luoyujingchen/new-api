@@ -37,6 +37,10 @@ const SECURITY_SECTIONS = [
           ModelRequestRateLimitDurationMinutes:
             settings.ModelRequestRateLimitDurationMinutes,
           ModelRequestRateLimitGroup: settings.ModelRequestRateLimitGroup,
+          QueueEnabled: settings.QueueEnabled,
+          QueueDefaultTimeout: settings.QueueDefaultTimeout,
+          QueueMaxTimeout: settings.QueueMaxTimeout,
+          QueueGlobalMaxSize: settings.QueueGlobalMaxSize,
         }}
       />
     ),

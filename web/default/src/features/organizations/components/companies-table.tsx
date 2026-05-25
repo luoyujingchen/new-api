@@ -266,6 +266,11 @@ function useColumns({
       },
     },
     {
+      accessorKey: 'queue_priority',
+      header: t('Queue Priority'),
+      cell: ({ row }) => <span>{row.getValue('queue_priority') as number}</span>,
+    },
+    {
       id: 'actions',
       header: t('Actions'),
       cell: ({ row }) => {
