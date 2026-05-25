@@ -1,13 +1,12 @@
 import { useTranslation } from 'react-i18next'
 import { useSearch, useNavigate } from '@tanstack/react-router'
-import { X } from 'lucide-react'
 import { SectionPageLayout } from '@/components/layout'
-import { Badge } from '@/components/ui/badge'
-import { DepartmentsProvider } from './components/departments-provider'
+import { DepartmentsProvider, useDepartments } from './components/departments-provider'
 import { DepartmentsTable } from './components/departments-table'
 import { DepartmentsPrimaryButtons } from './components/departments-primary-buttons'
 import { DepartmentsMutateDrawer } from './components/departments-mutate-drawer'
 import { DepartmentsDeleteDialog } from './components/departments-delete-dialog'
+import { OrganizationRateLimitDrawer } from '../components/organization-rate-limit-drawer'
 
 export function Departments() {
   const { t } = useTranslation()
@@ -32,6 +31,23 @@ export function Departments() {
       </SectionPageLayout>
       <DepartmentsMutateDrawer />
       <DepartmentsDeleteDialog />
+      <DepartmentsRateLimitDrawer />
     </DepartmentsProvider>
+  )
+}
+
+function DepartmentsRateLimitDrawer() {
+  const { open, setOpen, currentRow } = useDepartments()
+
+  if (open !== 'rate-limit' || !currentRow) return null
+
+  return (
+    <OrganizationRateLimitDrawer
+      open={true}
+      onOpenChange={(v) => { if (!v) setOpen(null) }}
+      orgType='department'
+      orgId={currentRow.id}
+      orgName={currentRow.name}
+    />
   )
 }

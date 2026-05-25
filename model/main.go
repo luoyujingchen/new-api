@@ -283,6 +283,7 @@ func migrateDB() error {
 		&PerfMetric{},
 		&Company{},
 		&Department{},
+		&OrganizationRateLimit{},
 	)
 	if err != nil {
 		return err

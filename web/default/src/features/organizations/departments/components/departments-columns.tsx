@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { MoreHorizontal, Pencil, Trash2, Power, FolderPlus } from 'lucide-react'
+import { MoreHorizontal, Pencil, Trash2, Power, FolderPlus, Gauge } from 'lucide-react'
 import type { Department } from '../../types'
 import { useDepartments } from './departments-provider'
 
@@ -126,6 +126,16 @@ export function useDepartmentsColumns(): ColumnDef<Department>[] {
               >
                 <Power />
                 {dept.status === 1 ? t('Disable') : t('Enable')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  setCurrentRow(dept)
+                  setOpen('rate-limit')
+                }}
+              >
+                <Gauge />
+                {t('Configure RPM')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -383,6 +383,18 @@ func SetApiRouter(router *gin.Engine) {
 			departmentRoute.GET("/:id/users", controller.GetDepartmentUsers)
 		}
 
+		// Organization rate limit management (admin)
+		rateLimitRoute := apiRouter.Group("/rate-limit")
+		rateLimitRoute.Use(middleware.AdminAuth())
+		{
+			rateLimitRoute.GET("/", controller.GetRateLimits)
+			rateLimitRoute.POST("/", controller.CreateRateLimit)
+			rateLimitRoute.GET("/:id", controller.GetRateLimit)
+			rateLimitRoute.PUT("/:id", controller.UpdateRateLimit)
+			rateLimitRoute.DELETE("/:id", controller.DeleteRateLimit)
+			rateLimitRoute.GET("/user/:id", controller.GetUserRateLimit)
+		}
+
 		modelsRoute := apiRouter.Group("/models")
 		modelsRoute.Use(middleware.AdminAuth())
 		{

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
 	"github.com/QuantumNous/new-api/constant"
+	orgservice "github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
@@ -74,15 +76,41 @@ func recordRedisRequest(ctx context.Context, rdb *redis.Client, key string, maxC
 	rdb.Expire(ctx, key, time.Duration(setting.ModelRequestRateLimitDurationMinutes)*time.Minute)
 }
 
+// extractModelNameFromRequest extracts the model name from the request body or URL
+func extractModelNameFromRequest(c *gin.Context) string {
+	// Try to get from URL path first (Gemini-style)
+	path := c.Request.URL.Path
+	if strings.HasPrefix(path, "/v1beta/models/") || strings.HasPrefix(path, "/v1/models/") {
+		modelName := extractModelNameFromGeminiPath(path)
+		if modelName != "" {
+			return modelName
+		}
+	}
+
+	// Try to get from query string (WebSocket-style)
+	if model := c.Query("model"); model != "" {
+		return model
+	}
+
+	// Try to get from request body
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := common.UnmarshalBodyReusable(c, &req); err == nil && req.Model != "" {
+		return req.Model
+	}
+
+	return ""
+}
+
 // Redis限流处理器
-func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) gin.HandlerFunc {
+func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int, rateLimitKey string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userId := strconv.Itoa(c.GetInt("id"))
 		ctx := context.Background()
 		rdb := common.RDB
 
 		// 1. 检查成功请求数限制
-		successKey := fmt.Sprintf("rateLimit:%s:%s", ModelRequestRateLimitSuccessCountMark, userId)
+		successKey := fmt.Sprintf("rateLimit:%s:%s", ModelRequestRateLimitSuccessCountMark, rateLimitKey)
 		allowed, err := checkRedisRateLimit(ctx, rdb, successKey, successMaxCount, duration)
 		if err != nil {
 			fmt.Println("检查成功请求数限制失败:", err.Error())
@@ -96,7 +124,7 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 
 		//2.检查总请求数限制并记录总请求（当totalMaxCount为0时会自动跳过，使用令牌桶限流器
 		if totalMaxCount > 0 {
-			totalKey := fmt.Sprintf("rateLimit:%s", userId)
+			totalKey := fmt.Sprintf("rateLimit:%s", rateLimitKey)
 			// 初始化
 			tb := limiter.New(ctx, rdb)
 			allowed, err = tb.Allow(
@@ -129,13 +157,12 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 }
 
 // 内存限流处理器
-func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) gin.HandlerFunc {
+func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int, rateLimitKey string) gin.HandlerFunc {
 	inMemoryRateLimiter.Init(time.Duration(setting.ModelRequestRateLimitDurationMinutes) * time.Minute)
 
 	return func(c *gin.Context) {
-		userId := strconv.Itoa(c.GetInt("id"))
-		totalKey := ModelRequestRateLimitCountMark + userId
-		successKey := ModelRequestRateLimitSuccessCountMark + userId
+		totalKey := ModelRequestRateLimitCountMark + rateLimitKey
+		successKey := ModelRequestRateLimitSuccessCountMark + rateLimitKey
 
 		// 1. 检查总请求数限制（当totalMaxCount为0时跳过）
 		if totalMaxCount > 0 && !inMemoryRateLimiter.Request(totalKey, totalMaxCount, duration) {
@@ -177,6 +204,34 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 		totalMaxCount := setting.ModelRequestRateLimitCount
 		successMaxCount := setting.ModelRequestRateLimitSuccessCount
 
+		// Get user ID for org rate limit lookup
+		userId := c.GetInt("id")
+
+		// Extract model name from request
+		modelName := extractModelNameFromRequest(c)
+
+		// Try organization rate limit first
+		orgResult := orgservice.MatchOrgRateLimitForMiddleware(userId, modelName)
+		if orgResult != nil && orgResult.Matched {
+			// Use organization shared rate limit key
+			rateLimitKey := fmt.Sprintf("org:%s:%d", orgResult.OrgType, orgResult.OrgId)
+			if orgResult.ModelName != "" {
+				rateLimitKey += ":" + orgResult.ModelName
+			}
+			// Organization RPM overrides group/global limits
+			totalMaxCount = orgResult.Rpm
+			successMaxCount = orgResult.Rpm
+
+			// Use org rate limit key for counting
+			if common.RedisEnabled {
+				redisRateLimitHandler(duration, totalMaxCount, successMaxCount, rateLimitKey)(c)
+			} else {
+				memoryRateLimitHandler(duration, totalMaxCount, successMaxCount, rateLimitKey)(c)
+			}
+			return
+		}
+
+		// Fall back to group/global rate limits
 		// 获取分组
 		group := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
 		if group == "" {
@@ -190,11 +245,14 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 			successMaxCount = groupSuccessCount
 		}
 
+		// Use user-level rate limit key for group/global
+		rateLimitKey := strconv.Itoa(userId)
+
 		// 根据存储类型选择并执行限流处理器
 		if common.RedisEnabled {
-			redisRateLimitHandler(duration, totalMaxCount, successMaxCount)(c)
+			redisRateLimitHandler(duration, totalMaxCount, successMaxCount, rateLimitKey)(c)
 		} else {
-			memoryRateLimitHandler(duration, totalMaxCount, successMaxCount)(c)
+			memoryRateLimitHandler(duration, totalMaxCount, successMaxCount, rateLimitKey)(c)
 		}
 	}
 }

@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { MoreHorizontal, Pencil, Trash2, Building2, Power } from 'lucide-react'
+import { MoreHorizontal, Pencil, Trash2, Building2, Power, Gauge } from 'lucide-react'
 import type { Company } from '../../types'
 import { useCompanies } from './companies-provider'
 
@@ -112,6 +112,15 @@ export function useCompaniesColumns(): ColumnDef<Company>[] {
                 {company.status === 1 ? t('Disable') : t('Enable')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  setCurrentRow(company)
+                  setOpen('rate-limit')
+                }}
+              >
+                <Gauge />
+                {t('Configure RPM')}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
                   navigate({ to: '/organizations/departments', search: { company_id: company.id } })

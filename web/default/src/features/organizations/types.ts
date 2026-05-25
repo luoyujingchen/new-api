@@ -98,5 +98,64 @@ export interface PaginatedResponse<T> {
   }
 }
 
-export type CompaniesDialogType = 'create' | 'update' | 'delete'
-export type DepartmentsDialogType = 'create' | 'create-child' | 'update' | 'delete'
+export type CompaniesDialogType = 'create' | 'update' | 'delete' | 'rate-limit'
+export type DepartmentsDialogType = 'create' | 'create-child' | 'update' | 'delete' | 'rate-limit'
+
+// ============================================================================
+// Organization Rate Limit Types
+// ============================================================================
+
+export interface TimeSlot {
+  start_time: string
+  end_time: string
+  weekdays?: number[]
+}
+
+export interface RateLimitRule {
+  id: number
+  org_type: string
+  org_id: number
+  org_name?: string
+  model_id: number
+  model_name: string
+  time_slots: TimeSlot[]
+  rpms: number[]
+  priority: number
+  status: number
+  created_at: number
+  updated_at: number
+}
+
+export interface RateLimitFormValues {
+  org_type: string
+  org_id: number
+  model_id?: number
+  model_name?: string
+  time_slots: TimeSlot[]
+  rpms: number[]
+  priority: number
+  status: number
+}
+
+export const RATE_LIMIT_FORM_DEFAULT_VALUES: RateLimitFormValues = {
+  org_type: 'company',
+  org_id: 0,
+  time_slots: [{ start_time: '00:00', end_time: '23:59', weekdays: [] }],
+  rpms: [60],
+  priority: 0,
+  status: 1,
+}
+
+export interface UserRateLimitResult {
+  source: string
+  org_name?: string
+  org_type?: string
+  org_id?: number
+  time_slot?: TimeSlot
+  rpm?: number
+  weekday?: number
+  model_id?: number
+  model_name?: string
+  priority?: number
+  rule_id?: number
+}

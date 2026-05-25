@@ -6,6 +6,9 @@ import type {
   DepartmentFormValues,
   ApiResponse,
   PaginatedResponse,
+  RateLimitRule,
+  RateLimitFormValues,
+  UserRateLimitResult,
 } from './types'
 
 // ============================================================================
@@ -171,5 +174,66 @@ export async function clearUserDepartment(
   userId: number
 ): Promise<ApiResponse> {
   const res = await api.delete(`/api/user/${userId}/department`)
+  return res.data
+}
+
+// ============================================================================
+// Organization Rate Limit APIs
+// ============================================================================
+
+export async function getRateLimits(params: {
+  org_type: string
+  org_id: number
+  p?: number
+  page_size?: number
+  model_id?: number
+  status?: number
+}): Promise<PaginatedResponse<RateLimitRule>> {
+  const { p = 1, page_size = 100, org_type, org_id, model_id, status } = params
+  let url = `/api/rate-limit/?org_type=${org_type}&org_id=${org_id}&p=${p}&page_size=${page_size}`
+  if (model_id) url += `&model_id=${model_id}`
+  if (status) url += `&status=${status}`
+  const res = await api.get(url)
+  return res.data
+}
+
+export async function getRateLimit(
+  id: number
+): Promise<ApiResponse<RateLimitRule>> {
+  const res = await api.get(`/api/rate-limit/${id}`)
+  return res.data
+}
+
+export async function createRateLimit(
+  data: RateLimitFormValues
+): Promise<ApiResponse<RateLimitRule>> {
+  const res = await api.post('/api/rate-limit/', data)
+  return res.data
+}
+
+export async function updateRateLimit(
+  id: number,
+  data: Partial<RateLimitFormValues>
+): Promise<ApiResponse<RateLimitRule>> {
+  const res = await api.put(`/api/rate-limit/${id}`, data)
+  return res.data
+}
+
+export async function deleteRateLimit(id: number): Promise<ApiResponse> {
+  const res = await api.delete(`/api/rate-limit/${id}`)
+  return res.data
+}
+
+export async function getUserRateLimit(params: {
+  id: number
+  model_name?: string
+  model_id?: number
+}): Promise<ApiResponse<UserRateLimitResult>> {
+  let url = `/api/rate-limit/user/${params.id}`
+  const queryParams: string[] = []
+  if (params.model_name) queryParams.push(`model_name=${params.model_name}`)
+  if (params.model_id) queryParams.push(`model_id=${params.model_id}`)
+  if (queryParams.length > 0) url += '?' + queryParams.join('&')
+  const res = await api.get(url)
   return res.data
 }
