@@ -16,171 +16,139 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { getRouteApi } from '@tanstack/react-router'
 import {
-  flexRender,
   getCoreRowModel,
+  getFilteredRowModel,
   getPaginationRowModel,
+  getSortedRowModel,
   useReactTable,
   type ColumnDef,
-  type PaginationState,
+  type SortingState,
+  type VisibilityState,
 } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
-import { MoreHorizontal, Pencil, Trash2, Building2, Gauge } from 'lucide-react'
+import { MoreHorizontal, Pencil, Trash2, Gauge, FolderPlus, Power } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTableUrlState } from '@/hooks/use-table-url-state'
+import { DataTablePage } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { DataTablePagination } from '@/components/data-table/pagination'
 import { Badge } from '@/components/ui/badge'
 import { deleteDepartment, updateDepartmentStatus } from '../api'
-import { type Department, DEPARTMENT_LEVEL_LABELS } from '../types'
+import { getDepartments } from '../api'
+import { type Department } from '../types'
+import { useDepartments } from './departments-provider'
+
+const route = getRouteApi('/_authenticated/organizations/departments')
 
 interface DepartmentsTableProps {
-  data: Department[]
-  total: number
-  page: number
-  pageSize: number
-  onPageChange: (page: number) => void
-  onEdit: (department: Department) => void
   onConfigureRateLimit: (department: Department) => void
-  onRefresh: () => void
 }
 
 export function DepartmentsTable({
-  data,
-  total,
-  page,
-  pageSize,
-  onPageChange,
-  onEdit,
   onConfigureRateLimit,
-  onRefresh,
 }: DepartmentsTableProps) {
   const { t } = useTranslation()
-
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: page - 1,
-    pageSize,
+  const { refreshTrigger } = useDepartments()
+  const search = route.useSearch()
+  const {
+    pagination,
+    onPaginationChange,
+    ensurePageInRange,
+  } = useTableUrlState({
+    search,
+    navigate: route.useNavigate(),
+    pagination: {
+      defaultPage: 1,
+      defaultPageSize: 10,
+    },
+    globalFilter: { enabled: false },
   })
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const columns = useColumns({ onConfigureRateLimit })
+  const companyId = search.company_id
 
-  const columns = useColumns({ onEdit, onConfigureRateLimit, onRefresh })
-
-  const table = useReactTable({
-    data,
-    columns,
-    pageCount: Math.ceil(total / pageSize),
-    state: { pagination },
-    onPaginationChange: (updater) => {
-      const newPagination =
-        typeof updater === 'function' ? updater(pagination) : updater
-      setPagination(newPagination)
-      if (newPagination.pageIndex !== page - 1) {
-        onPageChange(newPagination.pageIndex + 1)
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: [
+      'departments',
+      pagination.pageIndex + 1,
+      pagination.pageSize,
+      companyId,
+      refreshTrigger,
+    ],
+    queryFn: async () => {
+      const result = await getDepartments({
+        page: pagination.pageIndex + 1,
+        page_size: pagination.pageSize,
+        company_id: companyId,
+      })
+      return {
+        items: result.items || [],
+        total: result.total || 0,
       }
     },
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    placeholderData: (previousData) => previousData,
   })
 
+  const departments = data?.items || []
+  const total = data?.total || 0
+
+  const table = useReactTable({
+    data: departments,
+    columns,
+    pageCount: Math.ceil(total / Math.max(1, pagination.pageSize)),
+    state: {
+      sorting,
+      columnVisibility,
+      pagination,
+    },
+    onPaginationChange,
+    onSortingChange: setSorting,
+    onColumnVisibilityChange: setColumnVisibility,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    manualPagination: true,
+  })
+
+  useEffect(() => {
+    ensurePageInRange(table.getPageCount())
+  }, [ensurePageInRange, table, total])
+
   return (
-    <div className="space-y-4">
-      <div className="px-2">
-        <span className="text-sm text-muted-foreground">
-          {t('Total {{count}} items', { count: total })}
-        </span>
-      </div>
-
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} colSpan={header.colSpan}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && 'selected'}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  {t('No results')}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      <DataTablePagination table={table} />
-    </div>
+    <DataTablePage
+      table={table}
+      columns={columns}
+      isLoading={isLoading}
+      isFetching={isFetching}
+      emptyTitle={t('No Departments Found')}
+      emptyDescription={t(
+        'No departments available. Create your first department.'
+      )}
+      toolbarProps={null}
+      skeletonKeyPrefix='departments-skeleton'
+    />
   )
 }
 
 function useColumns({
-  onEdit,
   onConfigureRateLimit,
-  onRefresh,
 }: {
-  onEdit: (department: Department) => void
   onConfigureRateLimit: (department: Department) => void
-  onRefresh: () => void
 }) {
   const { t } = useTranslation()
-
-  const handleDelete = async (id: number, name: string) => {
-    if (!confirm(t('Are you sure you want to delete "{{name}}"?', { name }))) {
-      return
-    }
-
-    const result = await deleteDepartment(id)
-    if (result.success) {
-      toast.success(t('Department deleted successfully'))
-      onRefresh()
-    } else {
-      toast.error(result.message || t('Failed to delete department'))
-    }
-  }
+  const { setOpen, setCurrentRow, triggerRefresh } = useDepartments()
 
   const handleToggleStatus = async (id: number, currentStatus: number, name: string) => {
     const newStatus = currentStatus === 1 ? 0 : 1
@@ -191,7 +159,7 @@ function useColumns({
       toast.success(
         t('Department "{{name}}" {{action}}d successfully', { name, action })
       )
-      onRefresh()
+      triggerRefresh()
     } else {
       toast.error(result.message || t('Failed to update department status'))
     }
@@ -219,26 +187,14 @@ function useColumns({
       header: t('Level'),
       cell: ({ row }) => {
         const level = row.getValue('level') as number
-        return (
-          <Badge variant="outline">
-            {DEPARTMENT_LEVEL_LABELS[level]?.zh || `${level}级`}
-          </Badge>
-        )
+        return <Badge variant='outline'>{level || 1}</Badge>
       },
     },
     {
       accessorKey: 'company',
       header: t('Company'),
       cell: ({ row }) => {
-        const company = row.original.company
-        return company ? (
-          <div className="flex items-center gap-1">
-            <Building2 className="h-3 w-3 text-muted-foreground" />
-            <span className="text-sm">{company.name}</span>
-          </div>
-        ) : (
-          <span className="text-muted-foreground">-</span>
-        )
+        return row.original.company?.name || '-'
       },
     },
     {
@@ -287,6 +243,7 @@ function useColumns({
       header: t('Actions'),
       cell: ({ row }) => {
         const department = row.original
+        const canCreateChild = (department.level || 1) < 4
         return (
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -299,18 +256,39 @@ function useColumns({
                 <Gauge className='mr-2 h-4 w-4' />
                 {t('Configure RPM')}
               </DropdownMenuItem>
+              {canCreateChild && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    setCurrentRow(department)
+                    setOpen('create-child')
+                  }}
+                >
+                  <FolderPlus className='mr-2 h-4 w-4' />
+                  {t('Add Sub-Department')}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => handleToggleStatus(department.id, department.status, department.name)}
               >
+                <Power className='mr-2 h-4 w-4' />
                 {department.status === 1 ? t('Disable') : t('Enable')}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onEdit(department)}>
+              <DropdownMenuItem
+                onClick={() => {
+                  setCurrentRow(department)
+                  setOpen('update')
+                }}
+              >
                 <Pencil className="mr-2 h-4 w-4" />
                 {t('Edit')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive"
-                onClick={() => handleDelete(department.id, department.name)}
+                onClick={() => {
+                  setCurrentRow(department)
+                  setOpen('delete')
+                }}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 {t('Delete')}

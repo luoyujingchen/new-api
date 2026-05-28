@@ -34,7 +34,6 @@ import {
   ListTodo,
   Settings,
   Building2,
-  FolderTree,
   AppWindow,
   Gauge,
 } from 'lucide-react'
@@ -150,20 +149,10 @@ export function useSidebarData(): SidebarData {
             icon: CreditCard,
           },
           {
-            title: t('Organization Management'),
+            title: t('Organization'),
+            url: '/organizations/companies',
+            activeUrls: ['/organizations'],
             icon: Building2,
-            items: [
-              {
-                title: t('Companies'),
-                url: '/organizations/companies',
-                icon: Building2,
-              },
-              {
-                title: t('Departments'),
-                url: '/organizations/departments',
-                icon: FolderTree,
-              },
-            ],
           },
           {
             title: t('Applications'),

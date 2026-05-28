@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
+import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -42,16 +43,20 @@ import {
 } from '@/components/ui/select'
 import {
   Sheet,
-  SheetClose,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
-import { getAllCompanies, getAllDepartments } from '../api'
+import {
+  createDepartment,
+  getAllCompanies,
+  getAllDepartments,
+  updateDepartment,
+} from '../api'
 import { type Department, type DepartmentFormData, STATUS_OPTIONS } from '../types'
+import { useDepartments } from './departments-provider'
 
 const departmentFormSchema = z.object({
   company_id: z.number().int().positive('Company is required'),
@@ -74,36 +79,40 @@ const DEFAULT_VALUES: DepartmentFormValues = {
 }
 
 interface DepartmentsMutateDrawerProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  currentRow?: Department
-  onRefresh: () => void
   defaultCompanyId?: number
 }
 
-export function DepartmentsMutateDrawer({
-  open,
-  onOpenChange,
-  currentRow,
-  onRefresh,
-  defaultCompanyId,
-}: DepartmentsMutateDrawerProps) {
+const route = getRouteApi('/_authenticated/organizations/departments')
+
+export function DepartmentsMutateDrawer(_props: DepartmentsMutateDrawerProps) {
   const { t } = useTranslation()
-  const isUpdate = !!currentRow
+  const search = route.useSearch()
+  const { open, setOpen, currentRow, setCurrentRow, triggerRefresh } = useDepartments()
+  const isCreateChild = open === 'create-child'
+  const isUpdate = open === 'update'
+  const filteredCompanyId = search.company_id
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(
-    defaultCompanyId || null
+    filteredCompanyId || null
   )
 
-  // Fetch companies
+  const sheetOpen = open === 'create' || open === 'create-child' || open === 'update'
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      return
+    }
+    setOpen(null)
+    setCurrentRow(null)
+  }
+
   const { data: companiesData } = useQuery({
     queryKey: ['companies', 'all'],
     queryFn: () => getAllCompanies(1), // Only enabled companies
     staleTime: 5 * 60 * 1000,
   })
 
-  // Fetch departments for selected company
-  const { data: departmentsData, refetch: refetchDepartments } = useQuery({
+  const { data: departmentsData } = useQuery({
     queryKey: ['departments', 'all', selectedCompanyId],
     queryFn: () => getAllDepartments(selectedCompanyId || undefined, 1),
     enabled: !!selectedCompanyId,
@@ -119,39 +128,42 @@ export function DepartmentsMutateDrawer({
   })
 
   useEffect(() => {
-    if (open && isUpdate && currentRow) {
+    if (open === 'create-child' && currentRow) {
       setSelectedCompanyId(currentRow.company_id)
-      refetchDepartments()
+      form.reset({
+        ...DEFAULT_VALUES,
+        company_id: currentRow.company_id,
+        parent_id: currentRow.id,
+      })
+    } else if (sheetOpen && isUpdate && currentRow) {
+      setSelectedCompanyId(currentRow.company_id)
       form.reset({
         company_id: currentRow.company_id,
         name: currentRow.name,
-        parent_id: currentRow.parent_id ?? undefined,
+        parent_id: currentRow.parent_id ?? null,
         description: currentRow.description || '',
         status: currentRow.status,
         sort_order: currentRow.sort_order,
       })
-    } else if (open && !isUpdate) {
-      if (defaultCompanyId) {
-        setSelectedCompanyId(defaultCompanyId)
+    } else if (sheetOpen && !isUpdate) {
+      if (filteredCompanyId) {
+        setSelectedCompanyId(filteredCompanyId)
         form.reset({
           ...DEFAULT_VALUES,
-          company_id: defaultCompanyId,
+          company_id: filteredCompanyId,
         })
       } else {
         setSelectedCompanyId(null)
         form.reset(DEFAULT_VALUES)
       }
     }
-  }, [open, isUpdate, currentRow, defaultCompanyId, form, refetchDepartments])
+  }, [sheetOpen, open, isUpdate, currentRow, filteredCompanyId, form])
 
   const handleCompanyChange = (companyId: number) => {
     setSelectedCompanyId(companyId)
-    // Reset parent_id when company changes
     form.setValue('parent_id', null)
-    refetchDepartments()
   }
 
-  // Filter departments that can be parents (exclude self when updating)
   const availableParentDepartments = departments.filter(
     (dept) => !isUpdate || dept.id !== currentRow!.id
   )
@@ -159,7 +171,7 @@ export function DepartmentsMutateDrawer({
   const onSubmit = async (data: DepartmentFormValues) => {
     setIsSubmitting(true)
     try {
-      const payload: DepartmentFormData = {
+      const createPayload: DepartmentFormData = {
         company_id: data.company_id,
         name: data.name,
         parent_id: data.parent_id ?? null,
@@ -167,11 +179,15 @@ export function DepartmentsMutateDrawer({
         status: data.status,
         sort_order: data.sort_order,
       }
-
-      const { createDepartment, updateDepartment } = await import('../api')
       const result = isUpdate
-        ? await updateDepartment(currentRow!.id, payload)
-        : await createDepartment(payload)
+        ? await updateDepartment(currentRow!.id, {
+            name: data.name,
+            parent_id: data.parent_id ?? null,
+            description: data.description,
+            status: data.status,
+            sort_order: data.sort_order,
+          })
+        : await createDepartment(createPayload)
 
       if (result.success) {
         toast.success(
@@ -179,8 +195,8 @@ export function DepartmentsMutateDrawer({
             ? t('Department updated successfully')
             : t('Department created successfully')
         )
-        onOpenChange(false)
-        onRefresh()
+        handleOpenChange(false)
+        triggerRefresh()
       } else {
         toast.error(result.message || t('Operation failed'))
       }
@@ -190,16 +206,22 @@ export function DepartmentsMutateDrawer({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={sheetOpen} onOpenChange={handleOpenChange}>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>
-            {isUpdate ? t('Edit Department') : t('Create Department')}
+            {isUpdate
+              ? t('Edit Department')
+              : isCreateChild
+                ? t('New Sub-Department')
+                : t('Create Department')}
           </SheetTitle>
           <SheetDescription>
             {isUpdate
               ? t('Update department information')
-              : t('Fill in the form to create a new department')}
+              : isCreateChild && currentRow
+                ? `${t('Create a new department')} ${currentRow.name}`
+                : t('Fill in the form to create a new department')}
           </SheetDescription>
         </SheetHeader>
 
@@ -224,7 +246,7 @@ export function DepartmentsMutateDrawer({
                       }
                     }}
                     value={field.value ? String(field.value) : ''}
-                    disabled={isUpdate} // Cannot change company when updating
+                    disabled={isUpdate || isCreateChild}
                   >
                     <FormControl>
                       <SelectTrigger>
@@ -269,7 +291,7 @@ export function DepartmentsMutateDrawer({
                       field.onChange(value ? parseInt(value, 10) : null)
                     }
                     value={field.value ? String(field.value) : ''}
-                    disabled={!selectedCompanyId}
+                    disabled={!selectedCompanyId || isCreateChild}
                   >
                     <FormControl>
                       <SelectTrigger>
@@ -361,18 +383,14 @@ export function DepartmentsMutateDrawer({
           </form>
         </Form>
 
-        <SheetFooter className="mt-4">
-          <SheetClose render={<Button variant="outline" />}>
+        <div className='mt-4 flex items-center justify-end gap-2'>
+          <Button variant='outline' onClick={() => handleOpenChange(false)}>
             {t('Cancel')}
-          </SheetClose>
-          <Button
-            type="submit"
-            form="department-form"
-            disabled={isSubmitting}
-          >
+          </Button>
+          <Button type='submit' form='department-form' disabled={isSubmitting}>
             {isSubmitting ? t('Saving...') : isUpdate ? t('Save') : t('Create')}
           </Button>
-        </SheetFooter>
+        </div>
       </SheetContent>
     </Sheet>
   )

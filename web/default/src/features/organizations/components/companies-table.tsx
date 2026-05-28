@@ -16,180 +16,137 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import {
-  flexRender,
   getCoreRowModel,
+  getFilteredRowModel,
   getPaginationRowModel,
+  getSortedRowModel,
   useReactTable,
   type ColumnDef,
-  type PaginationState,
+  type SortingState,
+  type VisibilityState,
 } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
-import { MoreHorizontal, Pencil, Trash2, FolderTree, Gauge } from 'lucide-react'
+import { MoreHorizontal, Pencil, Trash2, FolderTree, Gauge, Power } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTableUrlState } from '@/hooks/use-table-url-state'
+import { DataTablePage } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { DataTablePagination } from '@/components/data-table/pagination'
 import { Badge } from '@/components/ui/badge'
-import { deleteCompany, updateCompanyStatus } from '../api'
+import { getCompanies, updateCompanyStatus } from '../api'
 import { type Company } from '../types'
+import { useCompanies } from './companies-provider'
+
+const route = getRouteApi('/_authenticated/organizations/companies')
 
 interface CompaniesTableProps {
-  data: Company[]
-  total: number
-  page: number
-  pageSize: number
-  onPageChange: (page: number) => void
-  onEdit: (company: Company) => void
-  onViewDepartments: (company: Company) => void
   onConfigureRateLimit: (company: Company) => void
-  onRefresh: () => void
 }
 
 export function CompaniesTable({
-  data,
-  total,
-  page,
-  pageSize,
-  onPageChange,
-  onEdit,
-  onViewDepartments,
   onConfigureRateLimit,
-  onRefresh,
 }: CompaniesTableProps) {
   const { t } = useTranslation()
-
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: page - 1,
-    pageSize,
+  const { refreshTrigger } = useCompanies()
+  const {
+    pagination,
+    onPaginationChange,
+    ensurePageInRange,
+  } = useTableUrlState({
+    search: route.useSearch(),
+    navigate: route.useNavigate(),
+    pagination: {
+      defaultPage: 1,
+      defaultPageSize: 10,
+    },
+    globalFilter: { enabled: false },
   })
-
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
   const columns = useColumns({
-    onEdit,
-    onViewDepartments,
     onConfigureRateLimit,
-    onRefresh,
   })
 
-  const table = useReactTable({
-    data,
-    columns,
-    pageCount: Math.ceil(total / pageSize),
-    state: { pagination },
-    onPaginationChange: (updater) => {
-      const newPagination =
-        typeof updater === 'function' ? updater(pagination) : updater
-      setPagination(newPagination)
-      if (newPagination.pageIndex !== page - 1) {
-        onPageChange(newPagination.pageIndex + 1)
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: [
+      'companies',
+      pagination.pageIndex + 1,
+      pagination.pageSize,
+      refreshTrigger,
+    ],
+    queryFn: async () => {
+      const result = await getCompanies({
+        page: pagination.pageIndex + 1,
+        page_size: pagination.pageSize,
+      })
+      return {
+        items: result.items || [],
+        total: result.total || 0,
       }
     },
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    placeholderData: (previousData) => previousData,
   })
 
+  const companies = data?.items || []
+  const total = data?.total || 0
+
+  const table = useReactTable({
+    data: companies,
+    columns,
+    pageCount: Math.ceil(total / Math.max(1, pagination.pageSize)),
+    state: {
+      sorting,
+      columnVisibility,
+      pagination,
+    },
+    onPaginationChange,
+    onSortingChange: setSorting,
+    onColumnVisibilityChange: setColumnVisibility,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    manualPagination: true,
+  })
+
+  useEffect(() => {
+    ensurePageInRange(table.getPageCount())
+  }, [ensurePageInRange, table, total])
+
   return (
-    <div className="space-y-4">
-      <div className="px-2">
-        <span className="text-sm text-muted-foreground">
-          {t('Total {{count}} items', { count: total })}
-        </span>
-      </div>
-
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} colSpan={header.colSpan}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && 'selected'}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  {t('No results')}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      <DataTablePagination table={table} />
-    </div>
+    <DataTablePage
+      table={table}
+      columns={columns}
+      isLoading={isLoading}
+      isFetching={isFetching}
+      emptyTitle={t('No Companies Found')}
+      emptyDescription={t(
+        'No companies available. Create your first company.'
+      )}
+      toolbarProps={null}
+      skeletonKeyPrefix='companies-skeleton'
+    />
   )
 }
 
 function useColumns({
-  onEdit,
-  onViewDepartments,
   onConfigureRateLimit,
-  onRefresh,
 }: {
-  onEdit: (company: Company) => void
-  onViewDepartments: (company: Company) => void
   onConfigureRateLimit: (company: Company) => void
-  onRefresh: () => void
 }) {
   const { t } = useTranslation()
-
-  const handleDelete = async (id: number, name: string) => {
-    if (!confirm(t('Are you sure you want to delete "{{name}}"?', { name }))) {
-      return
-    }
-
-    const result = await deleteCompany(id)
-    if (result.success) {
-      toast.success(t('Company deleted successfully'))
-      onRefresh()
-    } else {
-      toast.error(result.message || t('Failed to delete company'))
-    }
-  }
+  const navigate = useNavigate()
+  const { setOpen, setCurrentRow, triggerRefresh } = useCompanies()
 
   const handleToggleStatus = async (id: number, currentStatus: number, name: string) => {
     const newStatus = currentStatus === 1 ? 0 : 1
@@ -200,7 +157,7 @@ function useColumns({
       toast.success(
         t('Company "{{name}}" {{action}}d successfully', { name, action })
       )
-      onRefresh()
+      triggerRefresh()
     } else {
       toast.error(result.message || t('Failed to update company status'))
     }
@@ -283,7 +240,14 @@ function useColumns({
               <MoreHorizontal className='h-4 w-4' />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onViewDepartments(company)}>
+              <DropdownMenuItem
+                onClick={() => {
+                  navigate({
+                    to: '/organizations/departments',
+                    search: { company_id: company.id },
+                  })
+                }}
+              >
                 <FolderTree className="mr-2 h-4 w-4" />
                 {t('View Departments')}
               </DropdownMenuItem>
@@ -291,18 +255,28 @@ function useColumns({
                 <Gauge className='mr-2 h-4 w-4' />
                 {t('Configure RPM')}
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => handleToggleStatus(company.id, company.status, company.name)}
               >
+                <Power className='mr-2 h-4 w-4' />
                 {company.status === 1 ? t('Disable') : t('Enable')}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onEdit(company)}>
+              <DropdownMenuItem
+                onClick={() => {
+                  setCurrentRow(company)
+                  setOpen('update')
+                }}
+              >
                 <Pencil className="mr-2 h-4 w-4" />
                 {t('Edit')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive"
-                onClick={() => handleDelete(company.id, company.name)}
+                onClick={() => {
+                  setCurrentRow(company)
+                  setOpen('delete')
+                }}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 {t('Delete')}

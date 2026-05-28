@@ -41,16 +41,15 @@ import {
 } from '@/components/ui/select'
 import {
   Sheet,
-  SheetClose,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { createCompany, updateCompany } from '../api'
 import { type Company, type CompanyFormData, STATUS_OPTIONS } from '../types'
+import { useCompanies } from './companies-provider'
 
 const companyFormSchema = z.object({
   name: z.string().min(1, 'Company name is required').max(128, 'Company name is too long'),
@@ -72,22 +71,21 @@ const DEFAULT_VALUES: CompanyFormValues = {
   queue_priority: 5,
 }
 
-interface CompaniesMutateDrawerProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  currentRow?: Company
-  onRefresh: () => void
-}
-
-export function CompaniesMutateDrawer({
-  open,
-  onOpenChange,
-  currentRow,
-  onRefresh,
-}: CompaniesMutateDrawerProps) {
+export function CompaniesMutateDrawer() {
   const { t } = useTranslation()
+  const { open, setOpen, currentRow, setCurrentRow, triggerRefresh } = useCompanies()
   const isUpdate = !!currentRow
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const sheetOpen = open === 'create' || open === 'update'
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      return
+    }
+    setOpen(null)
+    setCurrentRow(null)
+  }
 
   const form = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
@@ -95,7 +93,7 @@ export function CompaniesMutateDrawer({
   })
 
   useEffect(() => {
-    if (open && isUpdate && currentRow) {
+    if (sheetOpen && isUpdate && currentRow) {
       form.reset({
         name: currentRow.name,
         code: currentRow.code,
@@ -104,10 +102,10 @@ export function CompaniesMutateDrawer({
         sort_order: currentRow.sort_order,
         queue_priority: currentRow.queue_priority || 5,
       })
-    } else if (open && !isUpdate) {
+    } else if (sheetOpen && !isUpdate) {
       form.reset(DEFAULT_VALUES)
     }
-  }, [open, isUpdate, currentRow, form])
+  }, [sheetOpen, isUpdate, currentRow, form])
 
   const onSubmit = async (data: CompanyFormValues) => {
     setIsSubmitting(true)
@@ -131,8 +129,8 @@ export function CompaniesMutateDrawer({
             ? t('Company updated successfully')
             : t('Company created successfully')
         )
-        onOpenChange(false)
-        onRefresh()
+        handleOpenChange(false)
+        triggerRefresh()
       } else {
         toast.error(result.message || t('Operation failed'))
       }
@@ -142,7 +140,7 @@ export function CompaniesMutateDrawer({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={sheetOpen} onOpenChange={handleOpenChange}>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>
@@ -296,18 +294,14 @@ export function CompaniesMutateDrawer({
           </form>
         </Form>
 
-        <SheetFooter className="mt-4">
-          <SheetClose render={<Button variant="outline" />}>
+        <div className='mt-4 flex items-center justify-end gap-2'>
+          <Button variant='outline' onClick={() => handleOpenChange(false)}>
             {t('Cancel')}
-          </SheetClose>
-          <Button
-            type="submit"
-            form="company-form"
-            disabled={isSubmitting}
-          >
+          </Button>
+          <Button type='submit' form='company-form' disabled={isSubmitting}>
             {isSubmitting ? t('Saving...') : isUpdate ? t('Save') : t('Create')}
           </Button>
-        </SheetFooter>
+        </div>
       </SheetContent>
     </Sheet>
   )

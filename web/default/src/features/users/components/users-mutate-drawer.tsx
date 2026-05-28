@@ -59,9 +59,10 @@ import { createUser, updateUser, getUser, getGroups } from '../api'
 import {
   clearUserDepartment,
   getAllCompanies,
-  getAllDepartments,
+  getDepartmentTree,
   setUserDepartment,
 } from '../../organizations/api'
+import { DepartmentTreeSelector } from '../../organizations/components/department-tree-selector'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   userFormSchema,
@@ -117,15 +118,15 @@ export function UsersMutateDrawer({
   // Watch company_id to fetch departments
   const selectedCompanyId = form.watch('company_id')
 
-  // Fetch departments based on selected company
-  const { data: departmentsData } = useQuery({
-    queryKey: ['departments', 'all', selectedCompanyId],
-    queryFn: () => getAllDepartments(selectedCompanyId ?? undefined, 1),
+  // Fetch department tree based on selected company so sub-departments keep their hierarchy.
+  const { data: departmentTreeData } = useQuery({
+    queryKey: ['departments', 'tree', selectedCompanyId],
+    queryFn: () => getDepartmentTree(selectedCompanyId!),
     enabled: !!selectedCompanyId,
     staleTime: 2 * 60 * 1000,
   })
 
-  const departments = departmentsData?.data || []
+  const departmentTree = departmentTreeData?.data || []
 
   // Load existing data when updating
   useEffect(() => {
@@ -439,37 +440,13 @@ export function UsersMutateDrawer({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>{t('Department (Optional)')}</FormLabel>
-                        <Select
-                          items={[
-                            { value: '', label: t('None') },
-                            ...departments.map((dept) => ({
-                              value: String(dept.id),
-                              label: `${'　'.repeat(Math.max(0, (dept.level || 1) - 1))}${dept.name}`,
-                            })),
-                          ]}
-                          onValueChange={(value) =>
-                            field.onChange(value ? Number(value) : null)
-                          }
-                          value={field.value ? String(field.value) : ''}
+                        <DepartmentTreeSelector
+                          tree={departmentTree}
+                          value={field.value ?? null}
+                          onChange={(value) => field.onChange(value || null)}
+                          placeholder={t('Select a department')}
                           disabled={!form.watch('company_id')}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder={t('Select a department')} />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent alignItemWithTrigger={false}>
-                            <SelectGroup>
-                              <SelectItem value=''>{t('None')}</SelectItem>
-                              {departments.map((dept) => (
-                                <SelectItem key={dept.id} value={String(dept.id)}>
-                                  {'　'.repeat(Math.max(0, (dept.level || 1) - 1))}
-                                  {dept.name}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
+                        />
                         <FormMessage />
                       </FormItem>
                     )}

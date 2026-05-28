@@ -17,101 +17,43 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { CompaniesTable } from './companies-table'
 import { CompaniesMutateDrawer } from './companies-mutate-drawer'
+import { CompaniesDeleteDialog } from './companies-delete-dialog'
 import { OrganizationRateLimitDrawer } from './organization-rate-limit-drawer'
-import { getCompanies } from '../api'
+import { CompaniesProvider, useCompanies } from './companies-provider'
 import { type Company } from '../types'
 
-export function CompaniesPage() {
-  const navigate = useNavigate()
-  const [page, setPage] = useState(1)
-  const [pageSize] = useState(20)
-  const [currentRow, setCurrentRow] = useState<Company | undefined>()
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
+function CompaniesContent() {
+  const { t } = useTranslation()
+  const { setOpen } = useCompanies()
   const [rateLimitTarget, setRateLimitTarget] = useState<Company | undefined>()
-  const [refreshTrigger, setRefreshTrigger] = useState(0)
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['companies', page, pageSize, refreshTrigger],
-    queryFn: () => getCompanies({ page, page_size: pageSize }),
-  })
-
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage)
-  }
-
-  const handleEdit = (company: Company) => {
-    setCurrentRow(company)
-  }
-
-  const handleRefresh = () => {
-    setRefreshTrigger((prev) => prev + 1)
-  }
-
-  const handleViewDepartments = (company: Company) => {
-    navigate({
-      to: '/organizations/departments',
-      search: { company_id: company.id },
-    })
-  }
 
   const handleConfigureRateLimit = (company: Company) => {
     setRateLimitTarget(company)
   }
 
-  if (isLoading) {
-    return <div className="p-4">Loading...</div>
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Companies</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage sub-business companies
-          </p>
-        </div>
-        <Button onClick={() => setIsCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Company
-        </Button>
-      </div>
+    <>
+      <SectionPageLayout>
+        <SectionPageLayout.Title>{t('Companies')}</SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          <Button size='sm' onClick={() => setOpen('create')}>
+            <Plus className='h-4 w-4' />
+            {t('New Company')}
+          </Button>
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          <CompaniesTable onConfigureRateLimit={handleConfigureRateLimit} />
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
 
-      <CompaniesTable
-        data={data?.items || []}
-        total={data?.total || 0}
-        page={page}
-        pageSize={pageSize}
-        onPageChange={handlePageChange}
-        onEdit={handleEdit}
-        onViewDepartments={handleViewDepartments}
-        onConfigureRateLimit={handleConfigureRateLimit}
-        onRefresh={handleRefresh}
-      />
-
-      {/* Create Drawer */}
-      <CompaniesMutateDrawer
-        open={isCreateOpen}
-        onOpenChange={setIsCreateOpen}
-        onRefresh={handleRefresh}
-      />
-
-      {/* Edit Drawer */}
-      <CompaniesMutateDrawer
-        open={!!currentRow}
-        onOpenChange={(open) => {
-          if (!open) setCurrentRow(undefined)
-        }}
-        currentRow={currentRow}
-        onRefresh={handleRefresh}
-      />
-
+      <CompaniesMutateDrawer />
+      <CompaniesDeleteDialog />
       <OrganizationRateLimitDrawer
         open={!!rateLimitTarget}
         onOpenChange={(open) => {
@@ -129,6 +71,14 @@ export function CompaniesPage() {
             : null
         }
       />
-    </div>
+    </>
+  )
+}
+
+export function CompaniesPage() {
+  return (
+    <CompaniesProvider>
+      <CompaniesContent />
+    </CompaniesProvider>
   )
 }
