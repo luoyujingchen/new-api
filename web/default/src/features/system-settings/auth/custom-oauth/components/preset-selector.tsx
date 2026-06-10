@@ -64,6 +64,11 @@ export function PresetSelector(props: PresetSelectorProps) {
     props.form.setValue('email_field', preset.email_field, {
       shouldDirty: true,
     })
+    if (preset.user_info_token_mode) {
+      props.form.setValue('user_info_token_mode', preset.user_info_token_mode, {
+        shouldDirty: true,
+      })
+    }
 
     // Apply base URL if already entered
     if (baseUrl) {

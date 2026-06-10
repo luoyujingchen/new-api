@@ -59,6 +59,7 @@ type CustomOAuthProvider struct {
 	// Advanced options
 	WellKnown           string `json:"well_known" gorm:"type:varchar(512)"`            // OIDC discovery endpoint (optional)
 	AuthStyle           int    `json:"auth_style" gorm:"default:0"`                    // 0=auto, 1=params, 2=header (Basic Auth)
+	UserInfoTokenMode   string `json:"user_info_token_mode" gorm:"type:varchar(16);default:'header'"` // how access_token is sent to userinfo: header (default) or query
 	AccessPolicy        string `json:"access_policy" gorm:"type:text"`                 // JSON policy for access control based on user info
 	AccessDeniedMessage string `json:"access_denied_message" gorm:"type:varchar(512)"` // Custom error message template when access is denied
 
@@ -190,6 +191,15 @@ func validateCustomOAuthProvider(provider *CustomOAuthProvider) error {
 	}
 	if provider.Scopes == "" {
 		provider.Scopes = "openid profile email"
+	}
+	userInfoTokenMode := strings.ToLower(strings.TrimSpace(provider.UserInfoTokenMode))
+	if userInfoTokenMode != "" && userInfoTokenMode != "header" && userInfoTokenMode != "query" {
+		return errors.New("user_info_token_mode must be 'header' or 'query'")
+	}
+	if userInfoTokenMode == "" {
+		provider.UserInfoTokenMode = "header"
+	} else {
+		provider.UserInfoTokenMode = userInfoTokenMode
 	}
 	if strings.TrimSpace(provider.AccessPolicy) != "" {
 		var policy accessPolicyPayload

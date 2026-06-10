@@ -40,6 +40,7 @@ export interface CustomOAuthProvider {
   email_field: string
   well_known: string
   auth_style: number // 0=auto, 1=params, 2=header
+  user_info_token_mode: string // 'header' (default) or 'query'
   access_policy: string
   access_denied_message: string
 }
@@ -73,6 +74,7 @@ export const customOAuthFormSchema = z.object({
   email_field: z.string().optional().default(''),
   well_known: z.string().optional().default(''),
   auth_style: z.number().int().min(0).max(2).default(0),
+  user_info_token_mode: z.string().optional().default('header'),
   access_policy: z.string().optional().default(''),
   access_denied_message: z.string().optional().default(''),
 })
@@ -113,6 +115,7 @@ export interface OAuthPreset {
   username_field: string
   display_name_field: string
   email_field: string
+  user_info_token_mode?: string // optional; only set when the preset needs 'query' mode
   needsBaseUrl: boolean
 }
 
@@ -215,10 +218,30 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     email_field: 'email',
     needsBaseUrl: true,
   },
+  {
+    key: 'idaas',
+    name: 'IDaaS',
+    icon: 'openid',
+    authorization_endpoint: '/authorize',
+    token_endpoint: '/accesstoken',
+    user_info_endpoint: '/userinfo',
+    scopes: 'base.profile',
+    user_id_field: 'globalUserID',
+    username_field: 'employeeNumber',
+    display_name_field: 'displayName',
+    email_field: 'email',
+    user_info_token_mode: 'query',
+    needsBaseUrl: true,
+  },
 ]
 
 export const AUTH_STYLE_OPTIONS = [
   { value: 0, labelKey: 'Auto Detect' },
   { value: 1, labelKey: 'Params (in body)' },
   { value: 2, labelKey: 'Header (Basic Auth)' },
+] as const
+
+export const USER_INFO_TOKEN_MODE_OPTIONS = [
+  { value: 'header', labelKey: 'Header (Bearer)' },
+  { value: 'query', labelKey: 'Query Parameter' },
 ] as const

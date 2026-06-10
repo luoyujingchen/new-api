@@ -202,15 +202,47 @@ func (p *GenericOAuthProvider) ExchangeToken(ctx context.Context, code string, c
 func (p *GenericOAuthProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*OAuthUser, error) {
 	logger.LogDebug(ctx, "[OAuth-Generic-%s] GetUserInfo: fetching user info from %s", p.config.Slug, p.config.UserInfoEndpoint)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", p.config.UserInfoEndpoint, nil)
+	// Determine how the access_token should be delivered to the userinfo endpoint.
+	// "query" => access_token (plus client_id and scope) appended to the URL query.
+	//            Required by some IdPs (e.g. Huawei uniportal IDaaS) that reject the
+	//            Authorization header with "access_token Parameter error".
+	// "" / "header" / unknown => Authorization: Bearer <token> (default, RFC 6750).
+	mode := strings.ToLower(strings.TrimSpace(p.config.UserInfoTokenMode))
+	if mode != "query" {
+		mode = "header"
+	}
+
+	targetURL := p.config.UserInfoEndpoint
+	if mode == "query" {
+		parsed, err := url.Parse(targetURL)
+		if err != nil {
+			return nil, err
+		}
+		q := parsed.Query()
+		q.Set("access_token", token.AccessToken)
+		if p.config.ClientId != "" {
+			q.Set("client_id", p.config.ClientId)
+		}
+		if p.config.Scopes != "" {
+			q.Set("scope", p.config.Scopes)
+		}
+		parsed.RawQuery = q.Encode()
+		targetURL = parsed.String()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// Set authorization header
-	tokenType := normalizeAuthorizationTokenType(token.TokenType)
-	req.Header.Set("Authorization", fmt.Sprintf("%s %s", tokenType, token.AccessToken))
+	if mode == "header" {
+		// Set authorization header
+		tokenType := normalizeAuthorizationTokenType(token.TokenType)
+		req.Header.Set("Authorization", fmt.Sprintf("%s %s", tokenType, token.AccessToken))
+	}
 	req.Header.Set("Accept", "application/json")
+
+	logger.LogDebug(ctx, "[OAuth-Generic-%s] GetUserInfo: mode=%s, url=%s", p.config.Slug, mode, targetURL)
 
 	client := http.Client{
 		Timeout: 20 * time.Second,

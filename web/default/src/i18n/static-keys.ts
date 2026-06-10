@@ -261,6 +261,10 @@ export const STATIC_I18N_KEYS = [
   'Unbind failed',
   'This user has no bindings',
 
+  // Custom OAuth provider — dynamic labelKey options
+  'Header (Bearer)',
+  'Query Parameter',
+
   // Subscription plans
   'Subscription Plans',
   'Subscribe Now',

@@ -57,6 +57,7 @@ import {
 import {
   customOAuthFormSchema,
   AUTH_STYLE_OPTIONS,
+  USER_INFO_TOKEN_MODE_OPTIONS,
   type CustomOAuthProvider,
   type CustomOAuthFormValues,
 } from '../types'
@@ -96,6 +97,7 @@ export function ProviderFormDialog(props: ProviderFormDialogProps) {
       email_field: '',
       well_known: '',
       auth_style: 0,
+      user_info_token_mode: 'header',
       access_policy: '',
       access_denied_message: '',
     },
@@ -120,6 +122,7 @@ export function ProviderFormDialog(props: ProviderFormDialogProps) {
         email_field: props.provider.email_field || '',
         well_known: props.provider.well_known || '',
         auth_style: props.provider.auth_style ?? 0,
+        user_info_token_mode: props.provider.user_info_token_mode || 'header',
         access_policy: props.provider.access_policy || '',
         access_denied_message: props.provider.access_denied_message || '',
       })
@@ -141,6 +144,7 @@ export function ProviderFormDialog(props: ProviderFormDialogProps) {
         email_field: '',
         well_known: '',
         auth_style: 0,
+        user_info_token_mode: 'header',
         access_policy: '',
         access_denied_message: '',
       })
@@ -351,6 +355,50 @@ export function ProviderFormDialog(props: ProviderFormDialogProps) {
                     <FormDescription>
                       {t(
                         'How client credentials are sent to the token endpoint'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='user_info_token_mode'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('User Info Token Mode')}</FormLabel>
+                    <Select
+                      items={[
+                        ...USER_INFO_TOKEN_MODE_OPTIONS.map((option) => ({
+                          value: option.value,
+                          label: t(option.labelKey),
+                        })),
+                      ]}
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <FormControl>
+                        <SelectTrigger className='w-full'>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectGroup>
+                          {USER_INFO_TOKEN_MODE_OPTIONS.map((option) => (
+                            <SelectItem
+                              key={option.value}
+                              value={option.value}
+                            >
+                              {t(option.labelKey)}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      {t(
+                        'How access_token is sent to the user info endpoint'
                       )}
                     </FormDescription>
                     <FormMessage />
