@@ -40,7 +40,7 @@ func TestGetEffectiveRateLimitPrefersChildDepartmentOverParent(t *testing.T) {
 		Status: 1,
 	}))
 
-	effective, err := svc.GetEffectiveRateLimit(user.Id, nil, time.Date(2026, time.May, 21, 10, 0, 0, 0, time.UTC))
+	effective, err := svc.GetEffectiveRateLimit(user.Id, "", time.Date(2026, time.May, 21, 10, 0, 0, 0, time.UTC))
 	require.NoError(t, err)
 	require.NotNil(t, effective)
 	require.Equal(t, int64(childDept.Id), effective.OrgId)

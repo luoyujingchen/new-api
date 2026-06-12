@@ -50,6 +50,8 @@ func QueueMiddleware() func(c *gin.Context) {
 		companyPriority := loadQueueCompanyPriority(companyID)
 		headerTimeout := parseQueueTimeoutHeader(c)
 		isStream := detectQueueStreamRequest(c)
+		estimatedPromptTokens := common.GetContextKeyInt(c, constant.ContextKeyEstimatedTokens)
+		longContextTiers, _ := common.GetContextKeyType[[]types.QueueLongContextTier](c, constant.ContextKeyQueueLongContextTiers)
 
 		var notifyWriterMu sync.Mutex
 		var notifier service.PositionNotifier
@@ -62,14 +64,19 @@ func QueueMiddleware() func(c *gin.Context) {
 		}
 
 		queuedRequest, position, _, err := queueService.Enqueue(service.QueueEnqueueOptions{
-			RequestContext:       c.Request.Context(),
-			ModelName:            modelName,
-			TokenID:              tokenID,
-			CompanyID:            companyID,
-			Priority:             service.CalculateQueuePriority(tokenPriority, companyPriority),
-			HeaderTimeoutSeconds: headerTimeout,
-			TokenTimeoutSeconds:  tokenTimeout,
+			RequestContext:        c.Request.Context(),
+			ModelName:             modelName,
+			TokenID:               tokenID,
+			CompanyID:             companyID,
+			Priority:              service.CalculateQueuePriority(tokenPriority, companyPriority),
+			HeaderTimeoutSeconds:  headerTimeout,
+			TokenTimeoutSeconds:   tokenTimeout,
+			EstimatedPromptTokens: estimatedPromptTokens,
+			LongContextTiers:      longContextTiers,
 			CanProceed: func() (bool, error) {
+				if !setting.ModelRequestRateLimitEnabled {
+					return true, nil
+				}
 				config := buildModelRateLimitConfigFromValues(userID, tokenGroup, userGroup, modelName)
 				allowed, _, err := tryAcquireModelRateLimit(config)
 				return allowed, err
@@ -93,8 +100,11 @@ func QueueMiddleware() func(c *gin.Context) {
 		select {
 		case <-queuedRequest.Ready:
 			queuedRequest.StopWaiting()
+			defer func() {
+				queueService.ReleaseLongContextSlots(queuedRequest)
+				queueService.NotifySchedulingRetry(modelName)
+			}()
 			c.Next()
-			queueService.NotifySchedulingRetry(modelName)
 			return
 		case <-queuedRequest.Context().Done():
 			queuedRequest.StopWaiting()

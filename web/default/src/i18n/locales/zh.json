@@ -4686,6 +4686,26 @@
     "Requests dequeued from this model queue during the last 60 seconds. This is queue throughput, not upstream provider RPM.": "最近 60 秒内从该模型队列出队并继续执行的请求数。这是队列吞吐量，不是上游提供商的 RPM。",
     "Shows whether queueing is currently enabled for this model. It is not an execution health indicator.": "显示该模型当前是否启用排队。这不是运行健康状态指标。",
     "The monitor refreshes automatically every 5 seconds. Hover or tap the help icons for metric definitions, or click a model name for live details.": "监控页每 5 秒自动刷新一次。悬浮或点击表头的帮助图标可查看指标说明，点击模型名称可查看实时详情。",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Long context": "长上下文",
+    "Long context controls": "长上下文控制",
+    "Long context tiers": "长上下文档位",
+    "Long context tier values must be greater than 0": "长上下文档位数值必须大于 0",
+    "Long context thresholds must be unique": "长上下文阈值不能重复",
+    "Long task higher tier max running cannot exceed lower tier": "高档位最大并发不能超过低档位",
+    "Long task limits": "长任务限制",
+    "Long task tiers": "长任务档位",
+    "Long task tier values must be greater than 0": "长任务档位数值必须大于 0",
+    "Long task thresholds must be unique": "长任务阈值不能重复",
+    "Max running": "最大运行数",
+    "No long context tiers configured.": "未配置长上下文档位。",
+    "Not configured": "未配置",
+    "Queued counts are cumulative across matching thresholds.": "排队数量会按命中的阈值累积统计。",
+    "Requests at or above a threshold enter the queue and consume the matching running slots.": "达到或超过阈值的请求会进入队列，并占用匹配的运行槽位。",
+    "Running and queued long-context requests grouped by input token thresholds.": "按输入 token 阈值分组的运行中和排队中长上下文请求。",
+    "Running slots and queued requests for configured long-context thresholds.": "已配置长上下文阈值的运行槽位和排队请求。",
+    "Threshold tokens": "阈值 token",
+    "queued": "排队中",
+    "running": "运行中"
   }
 }

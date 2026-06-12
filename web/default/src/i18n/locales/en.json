@@ -4686,6 +4686,26 @@
     "Requests dequeued from this model queue during the last 60 seconds. This is queue throughput, not upstream provider RPM.": "Requests dequeued from this model queue during the last 60 seconds. This is queue throughput, not upstream provider RPM.",
     "Shows whether queueing is currently enabled for this model. It is not an execution health indicator.": "Shows whether queueing is currently enabled for this model. It is not an execution health indicator.",
     "The monitor refreshes automatically every 5 seconds. Hover or tap the help icons for metric definitions, or click a model name for live details.": "The monitor refreshes automatically every 5 seconds. Hover or tap the help icons for metric definitions, or click a model name for live details.",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Long context": "Long context",
+    "Long context controls": "Long context controls",
+    "Long context tiers": "Long context tiers",
+    "Long context tier values must be greater than 0": "Long context tier values must be greater than 0",
+    "Long context thresholds must be unique": "Long context thresholds must be unique",
+    "Long task higher tier max running cannot exceed lower tier": "Long task higher tier max running cannot exceed lower tier",
+    "Long task limits": "Long task limits",
+    "Long task tiers": "Long task tiers",
+    "Long task tier values must be greater than 0": "Long task tier values must be greater than 0",
+    "Long task thresholds must be unique": "Long task thresholds must be unique",
+    "Max running": "Max running",
+    "No long context tiers configured.": "No long context tiers configured.",
+    "Not configured": "Not configured",
+    "Queued counts are cumulative across matching thresholds.": "Queued counts are cumulative across matching thresholds.",
+    "Requests at or above a threshold enter the queue and consume the matching running slots.": "Requests at or above a threshold enter the queue and consume the matching running slots.",
+    "Running and queued long-context requests grouped by input token thresholds.": "Running and queued long-context requests grouped by input token thresholds.",
+    "Running slots and queued requests for configured long-context thresholds.": "Running slots and queued requests for configured long-context thresholds.",
+    "Threshold tokens": "Threshold tokens",
+    "queued": "queued",
+    "running": "running"
   }
 }

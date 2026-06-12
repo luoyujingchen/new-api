@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/types"
 )
 
 const requestQueueThroughputWindow = 60 * time.Second
@@ -32,16 +33,19 @@ type QueueEnqueueOptions struct {
 	Priority              int
 	HeaderTimeoutSeconds  *int
 	TokenTimeoutSeconds   int
+	EstimatedPromptTokens int
+	LongContextTiers      []types.QueueLongContextTier
 	CanProceed            QueueCanProceed
 	PositionNotifier      PositionNotifier
 }
 
 type EffectiveQueueConfig struct {
-	ModelName    string `json:"model_name"`
-	Enabled      bool   `json:"enabled"`
-	MaxQueueSize int    `json:"max_queue_size"`
-	QueueTimeout int    `json:"queue_timeout"`
-	Configured   bool   `json:"configured"`
+	ModelName        string                       `json:"model_name"`
+	Enabled          bool                         `json:"enabled"`
+	MaxQueueSize     int                          `json:"max_queue_size"`
+	QueueTimeout     int                          `json:"queue_timeout"`
+	Configured       bool                         `json:"configured"`
+	LongContextTiers []types.QueueLongContextTier `json:"long_context_tiers"`
 }
 
 type QueueStatusSnapshot struct {
@@ -51,13 +55,14 @@ type QueueStatusSnapshot struct {
 }
 
 type ModelQueueSnapshot struct {
-	Queued        int            `json:"queued"`
-	AvgWaitSec    float64        `json:"avg_wait_sec"`
-	MaxWaitSec    float64        `json:"max_wait_sec"`
-	ThroughputRPM int            `json:"throughput_rpm"`
-	MaxQueueSize  int            `json:"max_queue_size"`
-	Enabled       bool           `json:"enabled"`
-	Buckets       map[string]int `json:"buckets"`
+	Queued           int                                `json:"queued"`
+	AvgWaitSec       float64                            `json:"avg_wait_sec"`
+	MaxWaitSec       float64                            `json:"max_wait_sec"`
+	ThroughputRPM    int                                `json:"throughput_rpm"`
+	MaxQueueSize     int                                `json:"max_queue_size"`
+	Enabled          bool                               `json:"enabled"`
+	Buckets          map[string]int                     `json:"buckets"`
+	LongContextTiers []types.QueueLongContextTierStatus `json:"long_context_tiers"`
 }
 
 type QueueFullError struct {
@@ -74,8 +79,10 @@ type QueuedRequest struct {
 	TokenID   int
 	CompanyID int64
 
-	ModelName string
-	Priority  int
+	ModelName             string
+	Priority              int
+	EstimatedPromptTokens int
+	LongContextTiers      []types.QueueLongContextTier
 
 	EnqueuedAt time.Time
 	Timeout    time.Duration
@@ -87,10 +94,11 @@ type QueuedRequest struct {
 	notify     PositionNotifier
 	canProceed QueueCanProceed
 
-	position       atomic.Int64
-	bucketPriority int
-	element        *list.Element
-	readyOnce      sync.Once
+	position                 atomic.Int64
+	bucketPriority           int
+	element                  *list.Element
+	readyOnce                sync.Once
+	longContextSlotsAcquired bool
 }
 
 func (r *QueuedRequest) Context() context.Context {
@@ -126,11 +134,12 @@ type queueNotification struct {
 type ModelQueue struct {
 	modelName string
 
-	mu           sync.Mutex
-	buckets      map[int]*list.List
-	size         int
-	maxQueueSize int
-	throughput   []time.Time
+	mu                 sync.Mutex
+	buckets            map[int]*list.List
+	size               int
+	maxQueueSize       int
+	throughput         []time.Time
+	longContextRunning map[int]int
 }
 
 func newModelQueue(modelName string) *ModelQueue {
@@ -139,8 +148,9 @@ func newModelQueue(modelName string) *ModelQueue {
 		buckets[priority] = list.New()
 	}
 	return &ModelQueue{
-		modelName: modelName,
-		buckets:   buckets,
+		modelName:          modelName,
+		buckets:            buckets,
+		longContextRunning: make(map[int]int),
 	}
 }
 
@@ -232,6 +242,38 @@ func (q *ModelQueue) PeekByWeight(excluded map[int]struct{}) (*QueuedRequest, in
 	return req, bucketPriority
 }
 
+func (q *ModelQueue) AcquireCandidateByWeight(excludedBuckets map[int]struct{}, excludedRequests map[*QueuedRequest]struct{}, currentTiers []types.QueueLongContextTier) (*QueuedRequest, int, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	bucketPriority, ok := q.selectBucketByWeightLocked(excludedBuckets)
+	if !ok {
+		return nil, 0, false
+	}
+	bucket := q.buckets[bucketPriority]
+	if bucket == nil || bucket.Len() == 0 {
+		return nil, bucketPriority, true
+	}
+	for node := bucket.Front(); node != nil; node = node.Next() {
+		req, _ := node.Value.(*QueuedRequest)
+		if req == nil {
+			continue
+		}
+		if excludedRequests != nil {
+			if _, found := excludedRequests[req]; found {
+				continue
+			}
+		}
+		req.LongContextTiers = MatchLongContextTiers(req.EstimatedPromptTokens, currentTiers)
+		if !q.canAcquireLongContextSlotsLocked(req) {
+			continue
+		}
+		q.acquireLongContextSlotsLocked(req)
+		return req, bucketPriority, true
+	}
+	return nil, bucketPriority, true
+}
+
 func (q *ModelQueue) DequeueIfHead(req *QueuedRequest) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -243,6 +285,19 @@ func (q *ModelQueue) DequeueIfHead(req *QueuedRequest) bool {
 	if bucket == nil || bucket.Front() != req.element {
 		return false
 	}
+	if !q.removeLocked(req) {
+		return false
+	}
+	q.recordDispatchLocked(time.Now())
+	notifications := q.updatePositionsLocked(time.Now())
+	go dispatchQueueNotifications(notifications)
+	return true
+}
+
+func (q *ModelQueue) Dequeue(req *QueuedRequest) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
 	if !q.removeLocked(req) {
 		return false
 	}
@@ -285,14 +340,26 @@ func (q *ModelQueue) Snapshot(effectiveConfig EffectiveQueueConfig) ModelQueueSn
 	}
 
 	return ModelQueueSnapshot{
-		Queued:        queued,
-		AvgWaitSec:    avgWait,
-		MaxWaitSec:    maxWait,
-		ThroughputRPM: q.throughputRPMLocked(now),
-		MaxQueueSize:  effectiveConfig.MaxQueueSize,
-		Enabled:       effectiveConfig.Enabled,
-		Buckets:       buckets,
+		Queued:           queued,
+		AvgWaitSec:       avgWait,
+		MaxWaitSec:       maxWait,
+		ThroughputRPM:    q.throughputRPMLocked(now),
+		MaxQueueSize:     effectiveConfig.MaxQueueSize,
+		Enabled:          effectiveConfig.Enabled,
+		Buckets:          buckets,
+		LongContextTiers: q.longContextTierStatusLocked(effectiveConfig.LongContextTiers),
 	}
+}
+
+func (q *ModelQueue) HasLongContextRunning() bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, running := range q.longContextRunning {
+		if running > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (q *ModelQueue) bucketSizesLocked() map[int]int {
@@ -317,6 +384,80 @@ func (q *ModelQueue) removeLocked(req *QueuedRequest) bool {
 		q.size--
 	}
 	return true
+}
+
+func (q *ModelQueue) canAcquireLongContextSlotsLocked(req *QueuedRequest) bool {
+	if req == nil || len(req.LongContextTiers) == 0 || req.longContextSlotsAcquired {
+		return true
+	}
+	for _, tier := range req.LongContextTiers {
+		if tier.MaxRunning <= 0 {
+			continue
+		}
+		if q.longContextRunning[tier.ThresholdTokens] >= tier.MaxRunning {
+			return false
+		}
+	}
+	return true
+}
+
+func (q *ModelQueue) acquireLongContextSlotsLocked(req *QueuedRequest) {
+	if req == nil || len(req.LongContextTiers) == 0 || req.longContextSlotsAcquired {
+		return
+	}
+	for _, tier := range req.LongContextTiers {
+		q.longContextRunning[tier.ThresholdTokens]++
+	}
+	req.longContextSlotsAcquired = true
+}
+
+func (q *ModelQueue) ReleaseLongContextSlots(req *QueuedRequest) bool {
+	if req == nil {
+		return false
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if !req.longContextSlotsAcquired {
+		return false
+	}
+	for _, tier := range req.LongContextTiers {
+		current := q.longContextRunning[tier.ThresholdTokens]
+		if current <= 1 {
+			delete(q.longContextRunning, tier.ThresholdTokens)
+			continue
+		}
+		q.longContextRunning[tier.ThresholdTokens] = current - 1
+	}
+	req.longContextSlotsAcquired = false
+	return true
+}
+
+func (q *ModelQueue) longContextTierStatusLocked(tiers []types.QueueLongContextTier) []types.QueueLongContextTierStatus {
+	if len(tiers) == 0 {
+		return nil
+	}
+	queuedByThreshold := make(map[int]int, len(tiers))
+	for priority := 1; priority <= 10; priority++ {
+		for node := q.buckets[priority].Front(); node != nil; node = node.Next() {
+			req, _ := node.Value.(*QueuedRequest)
+			if req == nil {
+				continue
+			}
+			for _, tier := range MatchLongContextTiers(req.EstimatedPromptTokens, tiers) {
+				queuedByThreshold[tier.ThresholdTokens]++
+			}
+		}
+	}
+	status := make([]types.QueueLongContextTierStatus, 0, len(tiers))
+	for _, tier := range tiers {
+		status = append(status, types.QueueLongContextTierStatus{
+			ThresholdTokens: tier.ThresholdTokens,
+			MaxRunning:      tier.MaxRunning,
+			Running:         q.longContextRunning[tier.ThresholdTokens],
+			Queued:          queuedByThreshold[tier.ThresholdTokens],
+		})
+	}
+	return status
 }
 
 func (q *ModelQueue) selectBucketByWeightLocked(excluded map[int]struct{}) (int, bool) {
@@ -447,18 +588,20 @@ func (s *RequestQueueService) Enqueue(options QueueEnqueueOptions) (*QueuedReque
 	queueCtx, cancel := context.WithTimeout(requestContext, timeout)
 
 	queuedRequest := &QueuedRequest{
-		ID:         common.GetTimeString() + common.GetRandomString(8),
-		TokenID:    options.TokenID,
-		CompanyID:  options.CompanyID,
-		ModelName:  modelName,
-		Priority:   setting.NormalizeQueuePriority(options.Priority),
-		EnqueuedAt: time.Now(),
-		Timeout:    timeout,
-		Ready:      make(chan struct{}),
-		ctx:        queueCtx,
-		cancel:     cancel,
-		notify:     options.PositionNotifier,
-		canProceed: options.CanProceed,
+		ID:                    common.GetTimeString() + common.GetRandomString(8),
+		TokenID:               options.TokenID,
+		CompanyID:             options.CompanyID,
+		ModelName:             modelName,
+		Priority:              setting.NormalizeQueuePriority(options.Priority),
+		EstimatedPromptTokens: options.EstimatedPromptTokens,
+		LongContextTiers:      options.LongContextTiers,
+		EnqueuedAt:            time.Now(),
+		Timeout:               timeout,
+		Ready:                 make(chan struct{}),
+		ctx:                   queueCtx,
+		cancel:                cancel,
+		notify:                options.PositionNotifier,
+		canProceed:            options.CanProceed,
 	}
 
 	queue := s.getOrCreateModelQueue(modelName)
@@ -484,6 +627,21 @@ func (s *RequestQueueService) Remove(req *QueuedRequest) bool {
 		s.NotifySchedulingRetry(req.ModelName)
 	}
 	return removed
+}
+
+func (s *RequestQueueService) ReleaseLongContextSlots(req *QueuedRequest) bool {
+	if req == nil {
+		return false
+	}
+	queue := s.getModelQueue(req.ModelName)
+	if queue == nil {
+		return false
+	}
+	released := queue.ReleaseLongContextSlots(req)
+	if released {
+		s.NotifySchedulingRetry(req.ModelName)
+	}
+	return released
 }
 
 func (s *RequestQueueService) NotifySchedulingRetry(modelName string) {
@@ -517,6 +675,7 @@ func (s *RequestQueueService) GetEffectiveQueueConfig(modelName string) Effectiv
 	effectiveConfig.Enabled = queueConfig.Enabled
 	effectiveConfig.MaxQueueSize = queueConfig.MaxQueueSize
 	effectiveConfig.QueueTimeout = queueConfig.QueueTimeout
+	effectiveConfig.LongContextTiers = queueConfig.GetLongContextTiers()
 	return effectiveConfig
 }
 
@@ -536,7 +695,7 @@ func (s *RequestQueueService) GetStatusSnapshot() QueueStatusSnapshot {
 			continue
 		}
 		status := queue.Snapshot(s.GetEffectiveQueueConfig(modelName))
-		if status.Queued == 0 {
+		if status.Queued == 0 && !hasLongContextTierActivity(status.LongContextTiers) {
 			continue
 		}
 		snapshot.Models[modelName] = status
@@ -552,14 +711,16 @@ func (s *RequestQueueService) GetModelStatusSnapshot(modelName string) (ModelQue
 	}
 	queue := s.getModelQueue(modelName)
 	if queue == nil {
+		effectiveConfig := s.GetEffectiveQueueConfig(modelName)
 		return ModelQueueSnapshot{
-			Queued:        0,
-			AvgWaitSec:    0,
-			MaxWaitSec:    0,
-			ThroughputRPM: 0,
-			MaxQueueSize:  s.GetEffectiveQueueConfig(modelName).MaxQueueSize,
-			Enabled:       s.GetEffectiveQueueConfig(modelName).Enabled,
-			Buckets:       emptyQueueBuckets(),
+			Queued:           0,
+			AvgWaitSec:       0,
+			MaxWaitSec:       0,
+			ThroughputRPM:    0,
+			MaxQueueSize:     effectiveConfig.MaxQueueSize,
+			Enabled:          effectiveConfig.Enabled,
+			Buckets:          emptyQueueBuckets(),
+			LongContextTiers: emptyLongContextTierStatus(effectiveConfig.LongContextTiers),
 		}, true
 	}
 	return queue.Snapshot(s.GetEffectiveQueueConfig(modelName)), true
@@ -630,6 +791,46 @@ func CalculateQueuePriority(tokenPriority int, companyPriority int) int {
 	default:
 		return priority
 	}
+}
+
+func MatchLongContextTiers(promptTokens int, tiers []types.QueueLongContextTier) []types.QueueLongContextTier {
+	if promptTokens <= 0 || len(tiers) == 0 {
+		return nil
+	}
+	normalized, err := types.NormalizeQueueLongContextTiers(tiers)
+	if err != nil {
+		return nil
+	}
+	matched := make([]types.QueueLongContextTier, 0, len(normalized))
+	for _, tier := range normalized {
+		if promptTokens >= tier.ThresholdTokens {
+			matched = append(matched, tier)
+		}
+	}
+	return matched
+}
+
+func hasLongContextTierActivity(tiers []types.QueueLongContextTierStatus) bool {
+	for _, tier := range tiers {
+		if tier.Running > 0 || tier.Queued > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func emptyLongContextTierStatus(tiers []types.QueueLongContextTier) []types.QueueLongContextTierStatus {
+	if len(tiers) == 0 {
+		return nil
+	}
+	status := make([]types.QueueLongContextTierStatus, 0, len(tiers))
+	for _, tier := range tiers {
+		status = append(status, types.QueueLongContextTierStatus{
+			ThresholdTokens: tier.ThresholdTokens,
+			MaxRunning:      tier.MaxRunning,
+		})
+	}
+	return status
 }
 
 func emptyQueueBuckets() map[string]int {

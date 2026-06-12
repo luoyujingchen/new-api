@@ -49,22 +49,31 @@ func (s *RequestQueueService) dispatchModel(modelName string) {
 }
 
 func (s *RequestQueueService) tryDispatchOnce(queue *ModelQueue) bool {
-	excluded := make(map[int]struct{}, 10)
-	for len(excluded) < 10 {
-		candidate, bucketPriority := queue.PeekByWeight(excluded)
-		if candidate == nil {
+	excludedBuckets := make(map[int]struct{}, 10)
+	excludedRequests := make(map[*QueuedRequest]struct{})
+	effectiveConfig := s.GetEffectiveQueueConfig(queue.modelName)
+	for len(excludedBuckets) < 10 {
+		candidate, bucketPriority, bucketFound := queue.AcquireCandidateByWeight(excludedBuckets, excludedRequests, effectiveConfig.LongContextTiers)
+		if !bucketFound {
 			return false
+		}
+		if candidate == nil {
+			excludedBuckets[bucketPriority] = struct{}{}
+			continue
 		}
 		allowed, err := candidate.canProceed()
 		if err != nil {
+			queue.ReleaseLongContextSlots(candidate)
 			common.SysError("request queue rate-limit recheck failed: " + err.Error())
 			return false
 		}
 		if !allowed {
-			excluded[bucketPriority] = struct{}{}
+			queue.ReleaseLongContextSlots(candidate)
+			excludedRequests[candidate] = struct{}{}
 			continue
 		}
-		if !queue.DequeueIfHead(candidate) {
+		if !queue.Dequeue(candidate) {
+			queue.ReleaseLongContextSlots(candidate)
 			continue
 		}
 		candidate.markReady()

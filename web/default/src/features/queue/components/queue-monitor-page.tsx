@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { LearnMore } from '@/components/learn-more'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { LearnMore } from '@/components/learn-more'
 import { getQueueModelStatus, getQueueStatus } from '../api'
 import type { QueueModelSnapshot } from '../types'
 
@@ -45,6 +45,12 @@ function formatBuckets(buckets: Record<string, number>) {
   })
 }
 
+function hasLongContextActivity(
+  tiers: QueueModelSnapshot['long_context_tiers']
+) {
+  return tiers.some((tier) => tier.running > 0 || tier.queued > 0)
+}
+
 function QueueMetricHelp({
   label,
   description,
@@ -53,7 +59,7 @@ function QueueMetricHelp({
   description: string
 }) {
   return (
-    <div className="flex items-center gap-1 whitespace-nowrap">
+    <div className='flex items-center gap-1 whitespace-nowrap'>
       <span>{label}</span>
       <LearnMore
         contentProps={{
@@ -90,7 +96,11 @@ export function QueueMonitorPage() {
 
   const rows = useMemo<QueueMonitorRow[]>(() => {
     return Object.entries(queueStatusQuery.data?.models || {})
-      .map(([model_name, snapshot]) => ({ model_name, ...snapshot }))
+      .map(([model_name, snapshot]) => ({
+        model_name,
+        ...snapshot,
+        long_context_tiers: snapshot.long_context_tiers || [],
+      }))
       .sort((left, right) => {
         if (right.queued !== left.queued) {
           return right.queued - left.queued
@@ -107,41 +117,48 @@ export function QueueMonitorPage() {
     priorityBuckets: t(
       'Current queued request counts grouped by effective priority buckets P1 to P10. Higher priorities get stronger scheduling weight.'
     ),
+    longContext: t(
+      'Running and queued long-context requests grouped by input token thresholds.'
+    ),
   }
 
   if (queueStatusQuery.isLoading) {
-    return <div className="p-4">{t('Loading...')}</div>
+    return <div className='p-4'>{t('Loading...')}</div>
   }
 
   if (queueStatusQuery.isError) {
-    return <div className="p-4">{t('Failed to load queue status')}</div>
+    return <div className='p-4'>{t('Failed to load queue status')}</div>
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className='space-y-4'>
+      <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
         <div>
-          <h1 className="text-2xl font-bold">{t('Queue Monitor')}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t('Monitor per-model queue depth, wait times, and weighted priority buckets.')}
+          <h1 className='text-2xl font-bold'>{t('Queue Monitor')}</h1>
+          <p className='text-muted-foreground text-sm'>
+            {t(
+              'Monitor per-model queue depth, wait times, and weighted priority buckets.'
+            )}
           </p>
         </div>
         <Button
-          variant="outline"
+          variant='outline'
           onClick={() => queueStatusQuery.refetch()}
           disabled={queueStatusQuery.isFetching}
         >
-          <RefreshCw className="mr-2 h-4 w-4" />
+          <RefreshCw className='mr-2 h-4 w-4' />
           {t('Refresh')}
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className='grid gap-4 md:grid-cols-3'>
         <Card>
           <CardHeader>
             <CardDescription>{t('Queue status')}</CardDescription>
             <CardTitle>
-              {queueStatusQuery.data?.queue_enabled ? t('Enabled') : t('Disabled')}
+              {queueStatusQuery.data?.queue_enabled
+                ? t('Enabled')
+                : t('Disabled')}
             </CardTitle>
           </CardHeader>
         </Card>
@@ -153,7 +170,9 @@ export function QueueMonitorPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardDescription>{t('Models with queued requests')}</CardDescription>
+            <CardDescription>
+              {t('Models with queued requests')}
+            </CardDescription>
             <CardTitle>{queuedModels}</CardTitle>
           </CardHeader>
         </Card>
@@ -167,7 +186,7 @@ export function QueueMonitorPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
+          <div className='rounded-md border'>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -189,6 +208,12 @@ export function QueueMonitorPage() {
                       description={columnHelp.priorityBuckets}
                     />
                   </TableHead>
+                  <TableHead>
+                    <QueueMetricHelp
+                      label={t('Long task limits')}
+                      description={columnHelp.longContext}
+                    />
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -197,8 +222,8 @@ export function QueueMonitorPage() {
                     <TableRow key={row.model_name}>
                       <TableCell>
                         <button
-                          type="button"
-                          className="text-left font-medium text-foreground transition-colors hover:text-primary hover:underline"
+                          type='button'
+                          className='text-foreground hover:text-primary text-left font-medium transition-colors hover:underline'
                           onClick={() => setSelectedModel(row.model_name)}
                           title={t('Click to view full details')}
                         >
@@ -206,29 +231,55 @@ export function QueueMonitorPage() {
                         </button>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary">
+                        <Badge variant='secondary'>
                           {row.enabled ? t('Enabled') : t('Disabled')}
                         </Badge>
                       </TableCell>
                       <TableCell>{row.queued}</TableCell>
-                      <TableCell>{formatWait(row.avg_wait_sec, t('seconds'))}</TableCell>
-                      <TableCell>{formatWait(row.max_wait_sec, t('seconds'))}</TableCell>
-                      <TableCell>{row.throughput_rpm}</TableCell>
                       <TableCell>
-                        {row.max_queue_size === 0 ? t('Unlimited') : row.max_queue_size}
+                        {formatWait(row.avg_wait_sec, t('seconds'))}
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-1">
+                        {formatWait(row.max_wait_sec, t('seconds'))}
+                      </TableCell>
+                      <TableCell>{row.throughput_rpm}</TableCell>
+                      <TableCell>
+                        {row.max_queue_size === 0
+                          ? t('Unlimited')
+                          : row.max_queue_size}
+                      </TableCell>
+                      <TableCell>
+                        <div className='flex flex-wrap gap-1'>
                           {formatBuckets(row.buckets)
                             .filter(([, count]) => count > 0)
                             .map(([priority, count]) => (
-                              <Badge key={priority} variant="outline">
+                              <Badge key={priority} variant='outline'>
                                 {`P${priority}: ${count}`}
                               </Badge>
                             ))}
-                          {Object.values(row.buckets).every((count) => count === 0) && (
-                            <span className="text-sm text-muted-foreground">
+                          {Object.values(row.buckets).every(
+                            (count) => count === 0
+                          ) && (
+                            <span className='text-muted-foreground text-sm'>
                               {t('No queued requests')}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className='flex flex-wrap gap-1'>
+                          {row.long_context_tiers.length > 0 ? (
+                            row.long_context_tiers.map((tier) => (
+                              <Badge
+                                key={tier.threshold_tokens}
+                                variant='outline'
+                              >
+                                {`>=${tier.threshold_tokens}: ${tier.running}/${tier.max_running}`}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className='text-muted-foreground text-sm'>
+                              {t('Not configured')}
                             </span>
                           )}
                         </div>
@@ -237,7 +288,7 @@ export function QueueMonitorPage() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center">
+                    <TableCell colSpan={9} className='h-24 text-center'>
                       {t('No queue activity yet')}
                     </TableCell>
                   </TableRow>
@@ -248,20 +299,25 @@ export function QueueMonitorPage() {
         </CardContent>
       </Card>
 
-      <Sheet open={!!selectedModel} onOpenChange={(open) => !open && setSelectedModel(null)}>
-        <SheetContent className="sm:max-w-xl">
+      <Sheet
+        open={!!selectedModel}
+        onOpenChange={(open) => !open && setSelectedModel(null)}
+      >
+        <SheetContent className='sm:max-w-xl'>
           <SheetHeader>
             <SheetTitle>{selectedModel || t('Queue details')}</SheetTitle>
             <SheetDescription>
               {t('Detailed live metrics for a single model queue.')}
             </SheetDescription>
           </SheetHeader>
-          <div className="mt-6 space-y-4">
+          <div className='mt-6 space-y-4'>
             {queueModelQuery.isLoading || queueModelQuery.isFetching ? (
-              <div className="text-sm text-muted-foreground">{t('Loading...')}</div>
+              <div className='text-muted-foreground text-sm'>
+                {t('Loading...')}
+              </div>
             ) : queueModelQuery.data ? (
               <>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className='grid gap-4 sm:grid-cols-2'>
                   <Card>
                     <CardHeader>
                       <CardDescription>{t('Queued')}</CardDescription>
@@ -271,14 +327,19 @@ export function QueueMonitorPage() {
                   <Card>
                     <CardHeader>
                       <CardDescription>{t('Throughput')}</CardDescription>
-                      <CardTitle>{queueModelQuery.data.throughput_rpm}</CardTitle>
+                      <CardTitle>
+                        {queueModelQuery.data.throughput_rpm}
+                      </CardTitle>
                     </CardHeader>
                   </Card>
                   <Card>
                     <CardHeader>
                       <CardDescription>{t('Average wait')}</CardDescription>
                       <CardTitle>
-                        {formatWait(queueModelQuery.data.avg_wait_sec, t('seconds'))}
+                        {formatWait(
+                          queueModelQuery.data.avg_wait_sec,
+                          t('seconds')
+                        )}
                       </CardTitle>
                     </CardHeader>
                   </Card>
@@ -286,7 +347,10 @@ export function QueueMonitorPage() {
                     <CardHeader>
                       <CardDescription>{t('Max wait')}</CardDescription>
                       <CardTitle>
-                        {formatWait(queueModelQuery.data.max_wait_sec, t('seconds'))}
+                        {formatWait(
+                          queueModelQuery.data.max_wait_sec,
+                          t('seconds')
+                        )}
                       </CardTitle>
                     </CardHeader>
                   </Card>
@@ -296,14 +360,16 @@ export function QueueMonitorPage() {
                   <CardHeader>
                     <CardTitle>{t('Priority buckets')}</CardTitle>
                     <CardDescription>
-                      {t('Queued requests grouped by effective priority from 1 to 10.')}
+                      {t(
+                        'Queued requests grouped by effective priority from 1 to 10.'
+                      )}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex flex-wrap gap-2">
+                    <div className='flex flex-wrap gap-2'>
                       {formatBuckets(queueModelQuery.data.buckets).map(
                         ([priority, count]) => (
-                          <Badge key={priority} variant="outline">
+                          <Badge key={priority} variant='outline'>
                             {`P${priority}: ${count}`}
                           </Badge>
                         )
@@ -311,9 +377,44 @@ export function QueueMonitorPage() {
                     </div>
                   </CardContent>
                 </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{t('Long task limits')}</CardTitle>
+                    <CardDescription>
+                      {t(
+                        'Running slots and queued requests for configured long-context thresholds.'
+                      )}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {queueModelQuery.data.long_context_tiers.length > 0 ? (
+                      <div className='flex flex-wrap gap-2'>
+                        {queueModelQuery.data.long_context_tiers.map((tier) => (
+                          <Badge key={tier.threshold_tokens} variant='outline'>
+                            {`>=${tier.threshold_tokens}: ${tier.running}/${tier.max_running} ${t('running')} - ${tier.queued} ${t('queued')}`}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className='text-muted-foreground text-sm'>
+                        {t('No long context tiers configured.')}
+                      </div>
+                    )}
+                    {hasLongContextActivity(
+                      queueModelQuery.data.long_context_tiers
+                    ) && (
+                      <p className='text-muted-foreground mt-3 text-sm'>
+                        {t(
+                          'Queued counts are cumulative across matching thresholds.'
+                        )}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
               </>
             ) : (
-              <div className="text-sm text-muted-foreground">
+              <div className='text-muted-foreground text-sm'>
                 {t('Failed to load queue model details')}
               </div>
             )}

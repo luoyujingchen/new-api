@@ -10,6 +10,7 @@
   "Failed to delete department": "Failed to delete department",
   "Failed to update company status": "Failed to update company status",
   "Failed to update department status": "Failed to update department status",
+  "How access_token is sent to the user info endpoint": "How access_token is sent to the user info endpoint",
   "I have read and understood the above compliance reminder": "I have read and understood the above compliance reminder",
   "I have read and understood the above compliance reminder, acknowledge the related legal risks, and confirm that I bear legal responsibility arising from deployment, operation, and charging behavior.": "I have read and understood the above compliance reminder, acknowledge the related legal risks, and confirm that I bear legal responsibility arising from deployment, operation, and charging behavior.",
   "If you provide generative AI services to the public in mainland China, you will fulfill legal obligations including filing, security assessment, content safety, complaint handling, generated content labeling, log retention, and personal information protection.": "If you provide generative AI services to the public in mainland China, you will fulfill legal obligations including filing, security assessment, content safety, complaint handling, generated content labeling, log retention, and personal information protection.",

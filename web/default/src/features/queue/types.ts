@@ -6,6 +6,16 @@ export type ApiResponse<T> = {
 
 export type QueueBuckets = Record<string, number>
 
+export type QueueLongContextTier = {
+  threshold_tokens: number
+  max_running: number
+}
+
+export type QueueLongContextTierStatus = QueueLongContextTier & {
+  running: number
+  queued: number
+}
+
 export type QueueModelSnapshot = {
   queued: number
   avg_wait_sec: number
@@ -14,6 +24,7 @@ export type QueueModelSnapshot = {
   max_queue_size: number
   enabled: boolean
   buckets: QueueBuckets
+  long_context_tiers: QueueLongContextTierStatus[]
 }
 
 export type QueueStatusSnapshot = {
@@ -31,6 +42,7 @@ export type QueueConfig = {
   enabled: boolean
   max_queue_size: number
   queue_timeout: number
+  long_context_tiers: QueueLongContextTier[]
 }
 
 export type QueueConfigFormData = {
@@ -38,4 +50,5 @@ export type QueueConfigFormData = {
   enabled: boolean
   max_queue_size: number
   queue_timeout: number
+  long_context_tiers: QueueLongContextTier[]
 }

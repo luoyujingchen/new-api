@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -32,14 +33,15 @@ func GetQueueModelStatus(c *gin.Context) {
 	}
 
 	common.ApiSuccess(c, dto.QueueModelStatusResponse{
-		ModelName:     modelName,
-		Queued:        snapshot.Queued,
-		AvgWaitSec:    snapshot.AvgWaitSec,
-		MaxWaitSec:    snapshot.MaxWaitSec,
-		ThroughputRPM: snapshot.ThroughputRPM,
-		MaxQueueSize:  snapshot.MaxQueueSize,
-		Enabled:       snapshot.Enabled,
-		Buckets:       snapshot.Buckets,
+		ModelName:        modelName,
+		Queued:           snapshot.Queued,
+		AvgWaitSec:       snapshot.AvgWaitSec,
+		MaxWaitSec:       snapshot.MaxWaitSec,
+		ThroughputRPM:    snapshot.ThroughputRPM,
+		MaxQueueSize:     snapshot.MaxQueueSize,
+		Enabled:          snapshot.Enabled,
+		Buckets:          snapshot.Buckets,
+		LongContextTiers: snapshot.LongContextTiers,
 	})
 }
 
@@ -91,12 +93,21 @@ func UpsertQueueConfig(c *gin.Context) {
 		common.ApiErrorMsg(c, "queue_timeout must be greater than or equal to 0")
 		return
 	}
+	longContextTiers, err := types.NormalizeQueueLongContextTiers(req.LongContextTiers)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	config := &model.QueueConfig{
 		ModelName:    modelName,
 		Enabled:      *req.Enabled,
 		MaxQueueSize: req.MaxQueueSize,
 		QueueTimeout: setting.NormalizeQueueTimeoutOption(req.QueueTimeout),
+	}
+	if err := config.SetLongContextTiers(longContextTiers); err != nil {
+		common.ApiError(c, err)
+		return
 	}
 	if err := model.UpsertQueueConfig(config); err != nil {
 		common.ApiError(c, err)
@@ -125,9 +136,10 @@ func buildQueueConfigResponse(config *model.QueueConfig) dto.QueueConfigResponse
 		return dto.QueueConfigResponse{}
 	}
 	return dto.QueueConfigResponse{
-		ModelName:    config.ModelName,
-		Enabled:      config.Enabled,
-		MaxQueueSize: config.MaxQueueSize,
-		QueueTimeout: config.QueueTimeout,
+		ModelName:        config.ModelName,
+		Enabled:          config.Enabled,
+		MaxQueueSize:     config.MaxQueueSize,
+		QueueTimeout:     config.QueueTimeout,
+		LongContextTiers: config.GetLongContextTiers(),
 	}
 }

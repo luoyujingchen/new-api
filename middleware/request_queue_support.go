@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
 	"github.com/QuantumNous/new-api/constant"
+	relayhelper "github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -152,4 +156,73 @@ func isQueueSupportedRelayRequest(c *gin.Context) bool {
 		return false
 	}
 	return true
+}
+
+func prepareLongContextQueueRequirement(c *gin.Context, modelName string) bool {
+	modelName = strings.TrimSpace(modelName)
+	if c == nil || modelName == "" || !setting.QueueEnabled || !isQueueSupportedRelayRequest(c) {
+		return false
+	}
+	queueService := service.GetRequestQueueService()
+	effectiveConfig := queueService.GetEffectiveQueueConfig(modelName)
+	if !effectiveConfig.Enabled || len(effectiveConfig.LongContextTiers) == 0 {
+		return false
+	}
+	promptTokens, err := estimateQueuePromptTokens(c, modelName)
+	if err != nil {
+		return false
+	}
+	common.SetContextKey(c, constant.ContextKeyEstimatedTokens, promptTokens)
+	matchedTiers := service.MatchLongContextTiers(promptTokens, effectiveConfig.LongContextTiers)
+	if len(matchedTiers) == 0 {
+		return false
+	}
+	common.SetContextKey(c, constant.ContextKeyQueueRequired, true)
+	common.SetContextKey(c, constant.ContextKeyQueueModelName, modelName)
+	common.SetContextKey(c, constant.ContextKeyQueueLongContextTiers, matchedTiers)
+	return true
+}
+
+func estimateQueuePromptTokens(c *gin.Context, modelName string) (int, error) {
+	request, err := relayhelper.GetAndValidateRequest(c, inferQueueRelayFormat(c))
+	if err != nil {
+		return 0, err
+	}
+	meta := request.GetTokenCountMeta()
+	if meta == nil {
+		return 0, nil
+	}
+
+	tokens := 0
+	if meta.TokenType == types.TokenTypeTextNumber {
+		tokens += utf8.RuneCountInString(meta.CombineText)
+	} else {
+		tokens += service.CountTextToken(meta.CombineText, modelName)
+	}
+
+	if inferQueueRelayFormat(c) == types.RelayFormatOpenAI {
+		tokens += meta.ToolsCount * 8
+		tokens += meta.MessagesCount * 3
+		tokens += meta.NameCount * 3
+		tokens += 3
+	}
+
+	for _, file := range meta.Files {
+		if file == nil {
+			continue
+		}
+		switch file.FileType {
+		case types.FileTypeImage:
+			tokens += 520
+		case types.FileTypeAudio:
+			tokens += 256
+		case types.FileTypeVideo:
+			tokens += 4096 * 2
+		case types.FileTypeFile:
+			tokens += 4096
+		default:
+			tokens += 4096
+		}
+	}
+	return tokens, nil
 }

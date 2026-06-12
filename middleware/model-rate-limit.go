@@ -10,8 +10,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -166,14 +166,23 @@ func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int, 
 // ModelRequestRateLimit 模型请求限流中间件
 func ModelRequestRateLimit() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		// 在每个请求时检查是否启用限流
+		requestModelName := resolveQueueModelName(c)
+		longContextQueueRequired := prepareLongContextQueueRequirement(c, requestModelName)
+
 		if !setting.ModelRequestRateLimitEnabled {
 			c.Next()
 			return
 		}
 
-		requestModelName := resolveQueueModelName(c)
 		config := buildModelRateLimitConfig(c, requestModelName)
+		if longContextQueueRequired {
+			c.Next()
+			if c.Writer.Status() < http.StatusBadRequest {
+				recordModelRateLimitSuccess(config)
+			}
+			return
+		}
+
 		allowed, rejectMessage, err := tryAcquireModelRateLimit(config)
 		if err != nil {
 			fmt.Println("检查请求限制失败:", err.Error())
@@ -204,11 +213,11 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 
 // OrganizationLimitResult 组织限流结果
 type OrganizationLimitResult struct {
-	Rpm      int
-	OrgType  string
-	OrgId    int64
-	OrgName  string
-	ModelId  *int64
+	Rpm       int
+	OrgType   string
+	OrgId     int64
+	OrgName   string
+	ModelId   *int64
 	ModelName string
 }
 
@@ -225,11 +234,11 @@ func checkOrganizationRateLimit(userId int, modelName string, currentTime time.T
 
 	// 返回限流结果
 	return &OrganizationLimitResult{
-		Rpm:     effective.Rpm,
-		OrgType: effective.OrgType,
-		OrgId:   effective.OrgId,
-		OrgName: effective.OrgName,
-		ModelId: effective.ModelId,
+		Rpm:       effective.Rpm,
+		OrgType:   effective.OrgType,
+		OrgId:     effective.OrgId,
+		OrgName:   effective.OrgName,
+		ModelId:   effective.ModelId,
 		ModelName: effective.ModelName,
 	}, nil
 }
