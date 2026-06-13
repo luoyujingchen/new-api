@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -53,15 +52,7 @@ func QueueMiddleware() func(c *gin.Context) {
 		estimatedPromptTokens := common.GetContextKeyInt(c, constant.ContextKeyEstimatedTokens)
 		longContextTiers, _ := common.GetContextKeyType[[]types.QueueLongContextTier](c, constant.ContextKeyQueueLongContextTiers)
 
-		var notifyWriterMu sync.Mutex
 		var notifier service.PositionNotifier
-		if isStream {
-			notifier = func(position int, estimatedWaitSec int) {
-				notifyWriterMu.Lock()
-				defer notifyWriterMu.Unlock()
-				writeQueuePositionEvent(c, position, estimatedWaitSec)
-			}
-		}
 
 		queuedRequest, position, _, err := queueService.Enqueue(service.QueueEnqueueOptions{
 			RequestContext:        c.Request.Context(),
