@@ -29,13 +29,17 @@ type tokenAPIResponse struct {
 
 type tokenPageResponse struct {
 	Items []tokenResponseItem `json:"items"`
+	Total int                 `json:"total"`
 }
 
 type tokenResponseItem struct {
-	ID     int    `json:"id"`
-	Name   string `json:"name"`
-	Key    string `json:"key"`
-	Status int    `json:"status"`
+	ID            int    `json:"id"`
+	UserID        int    `json:"user_id"`
+	Name          string `json:"name"`
+	Key           string `json:"key"`
+	Status        int    `json:"status"`
+	QueuePriority int    `json:"queue_priority"`
+	QueueTimeout  int    `json:"queue_timeout"`
 }
 
 type tokenKeyResponse struct {
@@ -48,21 +52,21 @@ type sqliteColumnInfo struct {
 }
 
 type legacyToken struct {
-	Id                 int            `gorm:"primaryKey"`
-	UserId             int            `gorm:"index"`
-	Key                string         `gorm:"column:key;type:char(48);uniqueIndex"`
-	Status             int            `gorm:"default:1"`
-	Name               string         `gorm:"index"`
-	CreatedTime        int64          `gorm:"bigint"`
-	AccessedTime       int64          `gorm:"bigint"`
-	ExpiredTime        int64          `gorm:"bigint;default:-1"`
-	RemainQuota        int            `gorm:"default:0"`
+	Id                 int    `gorm:"primaryKey"`
+	UserId             int    `gorm:"index"`
+	Key                string `gorm:"column:key;type:char(48);uniqueIndex"`
+	Status             int    `gorm:"default:1"`
+	Name               string `gorm:"index"`
+	CreatedTime        int64  `gorm:"bigint"`
+	AccessedTime       int64  `gorm:"bigint"`
+	ExpiredTime        int64  `gorm:"bigint;default:-1"`
+	RemainQuota        int    `gorm:"default:0"`
 	UnlimitedQuota     bool
 	ModelLimitsEnabled bool
-	ModelLimits        string         `gorm:"type:text"`
-	AllowIps           *string        `gorm:"default:''"`
-	UsedQuota          int            `gorm:"default:0"`
-	Group              string         `gorm:"column:group;default:''"`
+	ModelLimits        string  `gorm:"type:text"`
+	AllowIps           *string `gorm:"default:''"`
+	UsedQuota          int     `gorm:"default:0"`
+	Group              string  `gorm:"column:group;default:''"`
 	CrossGroupRetry    bool
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
@@ -184,6 +188,11 @@ func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string
 
 func newAuthenticatedContext(t *testing.T, method string, target string, body any, userID int) (*gin.Context, *httptest.ResponseRecorder) {
 	t.Helper()
+	return newAuthenticatedContextWithRole(t, method, target, body, userID, common.RoleCommonUser)
+}
+
+func newAuthenticatedContextWithRole(t *testing.T, method string, target string, body any, userID int, role int) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
 
 	var requestBody *bytes.Reader
 	if body != nil {
@@ -203,6 +212,7 @@ func newAuthenticatedContext(t *testing.T, method string, target string, body an
 		ctx.Request.Header.Set("Content-Type", "application/json")
 	}
 	ctx.Set("id", userID)
+	ctx.Set("role", role)
 	return ctx, recorder
 }
 
@@ -537,5 +547,205 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	}
 	if strings.Contains(unauthorizedRecorder.Body.String(), token.Key) {
 		t.Fatalf("unauthorized key response leaked raw token key: %s", unauthorizedRecorder.Body.String())
+	}
+}
+
+func TestRootCanListAllTokensMasked(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	first := seedToken(t, db, 1, "root-visible-one", "root1111token2222")
+	second := seedToken(t, db, 2, "root-visible-two", "root3333token4444")
+
+	ctx, recorder := newAuthenticatedContextWithRole(t, http.MethodGet, "/api/token/?p=1&size=10", nil, 99, common.RoleRootUser)
+	GetAllTokens(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected root list to succeed, got message: %s", response.Message)
+	}
+
+	var page tokenPageResponse
+	if err := common.Unmarshal(response.Data, &page); err != nil {
+		t.Fatalf("failed to decode root token page response: %v", err)
+	}
+	if page.Total != 2 {
+		t.Fatalf("expected root token total 2, got %d", page.Total)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("expected root to see two tokens, got %d", len(page.Items))
+	}
+	seenUsers := map[int]bool{}
+	for _, item := range page.Items {
+		seenUsers[item.UserID] = true
+		if item.Key != first.GetMaskedKey() && item.Key != second.GetMaskedKey() {
+			t.Fatalf("expected masked key in root list, got %q", item.Key)
+		}
+	}
+	if !seenUsers[1] || !seenUsers[2] {
+		t.Fatalf("expected root list to include user 1 and user 2 tokens, got %#v", seenUsers)
+	}
+	if strings.Contains(recorder.Body.String(), first.Key) || strings.Contains(recorder.Body.String(), second.Key) {
+		t.Fatalf("root list response leaked raw token key: %s", recorder.Body.String())
+	}
+}
+
+func TestRootCanFetchOtherUserTokenKey(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 2, "other-owned-token", "other1234token5678")
+
+	ctx, recorder := newAuthenticatedContextWithRole(t, http.MethodPost, "/api/token/"+strconv.Itoa(token.Id)+"/key", nil, 99, common.RoleRootUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
+	GetTokenKey(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected root key fetch to succeed, got message: %s", response.Message)
+	}
+
+	var keyData tokenKeyResponse
+	if err := common.Unmarshal(response.Data, &keyData); err != nil {
+		t.Fatalf("failed to decode root token key response: %v", err)
+	}
+	if keyData.Key != token.GetFullKey() {
+		t.Fatalf("expected full key %q, got %q", token.GetFullKey(), keyData.Key)
+	}
+}
+
+func TestRootCanDisableOtherUserToken(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 2, "disable-other-token", "disable1234token5678")
+
+	body := map[string]any{
+		"id":     token.Id,
+		"status": common.TokenStatusDisabled,
+	}
+	ctx, recorder := newAuthenticatedContextWithRole(t, http.MethodPut, "/api/token/?status_only=true", body, 99, common.RoleRootUser)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected root disable to succeed, got message: %s", response.Message)
+	}
+
+	var updated model.Token
+	if err := db.First(&updated, "id = ?", token.Id).Error; err != nil {
+		t.Fatalf("failed to fetch disabled token: %v", err)
+	}
+	if updated.Status != common.TokenStatusDisabled {
+		t.Fatalf("expected token status disabled, got %d", updated.Status)
+	}
+}
+
+func TestNonRootCannotDisableOtherUserToken(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 2, "protected-other-token", "protect1234token5678")
+
+	body := map[string]any{
+		"id":     token.Id,
+		"status": common.TokenStatusDisabled,
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/?status_only=true", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected non-root disable of another user's token to fail")
+	}
+
+	var unchanged model.Token
+	if err := db.First(&unchanged, "id = ?", token.Id).Error; err != nil {
+		t.Fatalf("failed to fetch protected token: %v", err)
+	}
+	if unchanged.Status != common.TokenStatusEnabled {
+		t.Fatalf("expected token status to remain enabled, got %d", unchanged.Status)
+	}
+}
+
+func TestTokenQueueSettingsAreRootOnly(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+
+	createBody := map[string]any{
+		"name":                 "non-root-created",
+		"expired_time":         -1,
+		"remain_quota":         0,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "default",
+		"queue_priority":       10,
+		"queue_timeout":        90,
+	}
+	createCtx, createRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", createBody, 1)
+	AddToken(createCtx)
+	createResponse := decodeAPIResponse(t, createRecorder)
+	if !createResponse.Success {
+		t.Fatalf("expected non-root token create to succeed, got message: %s", createResponse.Message)
+	}
+
+	var created model.Token
+	if err := db.First(&created, "name = ?", "non-root-created").Error; err != nil {
+		t.Fatalf("failed to fetch non-root created token: %v", err)
+	}
+	if created.QueuePriority != 5 || created.QueueTimeout != 0 {
+		t.Fatalf("expected non-root create to use queue defaults, got priority=%d timeout=%d", created.QueuePriority, created.QueueTimeout)
+	}
+
+	created.QueuePriority = 3
+	created.QueueTimeout = 45
+	if err := db.Save(&created).Error; err != nil {
+		t.Fatalf("failed to seed existing queue settings: %v", err)
+	}
+
+	updateBody := map[string]any{
+		"id":                   created.Id,
+		"name":                 "non-root-updated",
+		"expired_time":         -1,
+		"remain_quota":         0,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "default",
+		"queue_priority":       10,
+		"queue_timeout":        120,
+	}
+	updateCtx, updateRecorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", updateBody, 1)
+	UpdateToken(updateCtx)
+	updateResponse := decodeAPIResponse(t, updateRecorder)
+	if !updateResponse.Success {
+		t.Fatalf("expected non-root token update to succeed, got message: %s", updateResponse.Message)
+	}
+
+	var nonRootUpdated model.Token
+	if err := db.First(&nonRootUpdated, "id = ?", created.Id).Error; err != nil {
+		t.Fatalf("failed to fetch non-root updated token: %v", err)
+	}
+	if nonRootUpdated.QueuePriority != 3 || nonRootUpdated.QueueTimeout != 45 {
+		t.Fatalf("expected non-root update to preserve queue settings, got priority=%d timeout=%d", nonRootUpdated.QueuePriority, nonRootUpdated.QueueTimeout)
+	}
+
+	rootBody := map[string]any{
+		"id":                   created.Id,
+		"name":                 "root-updated",
+		"expired_time":         -1,
+		"remain_quota":         0,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "default",
+		"queue_priority":       8,
+		"queue_timeout":        120,
+	}
+	rootCtx, rootRecorder := newAuthenticatedContextWithRole(t, http.MethodPut, "/api/token/", rootBody, 99, common.RoleRootUser)
+	UpdateToken(rootCtx)
+	rootResponse := decodeAPIResponse(t, rootRecorder)
+	if !rootResponse.Success {
+		t.Fatalf("expected root token update to succeed, got message: %s", rootResponse.Message)
+	}
+
+	var rootUpdated model.Token
+	if err := db.First(&rootUpdated, "id = ?", created.Id).Error; err != nil {
+		t.Fatalf("failed to fetch root updated token: %v", err)
+	}
+	if rootUpdated.QueuePriority != 8 || rootUpdated.QueueTimeout != 120 {
+		t.Fatalf("expected root update to change queue settings, got priority=%d timeout=%d", rootUpdated.QueuePriority, rootUpdated.QueueTimeout)
 	}
 }

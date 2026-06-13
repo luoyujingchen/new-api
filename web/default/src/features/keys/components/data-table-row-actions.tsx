@@ -257,6 +257,24 @@ export function DataTableRowActions<TData>({
             </DropdownMenuShortcut>
           </DropdownMenuItem>
           <DropdownMenuItem
+            onClick={() => handleToggleStatus()}
+            disabled={isTogglingStatus}
+            className={
+              isEnabled ? 'text-destructive focus:text-destructive' : undefined
+            }
+          >
+            {isEnabled ? t('Disable') : t('Enable')}
+            <DropdownMenuShortcut>
+              {isTogglingStatus ? (
+                <Loader2 size={16} className='animate-spin' />
+              ) : isEnabled ? (
+                <PowerOff size={16} />
+              ) : (
+                <Power size={16} />
+              )}
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
+          <DropdownMenuItem
             onClick={async () => {
               const realKey = await resolveRealKey(apiKey.id)
               if (!realKey) return

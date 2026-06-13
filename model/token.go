@@ -29,7 +29,7 @@ type Token struct {
 	Group              string         `json:"group" gorm:"default:''"`
 	QueuePriority      int            `json:"queue_priority" gorm:"default:5"`
 	QueueTimeout       int            `json:"queue_timeout" gorm:"default:0"`
-	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	CrossGroupRetry    bool           `json:"cross_group_retry"`           // 跨分组重试，仅auto分组有效
 	ApplicationId      *int64         `json:"application_id" gorm:"index"` // 关联的应用ID
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
@@ -88,6 +88,12 @@ func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	return tokens, err
 }
 
+func GetAllTokens(startIdx int, num int) ([]*Token, error) {
+	var tokens []*Token
+	err := DB.Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	return tokens, err
+}
+
 // sanitizeLikePattern 校验并清洗用户输入的 LIKE 搜索模式。
 // 规则：
 //  1. 转义 ! 和 _（使用 ! 作为 ESCAPE 字符，兼容 MySQL/PostgreSQL/SQLite）
@@ -127,7 +133,7 @@ func sanitizeLikePattern(input string) (string, error) {
 
 const searchHardLimit = 100
 
-func SearchUserTokens(userId int, keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
+func searchTokens(userId int, allUsers bool, keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
 	// model 层强制截断
 	if limit <= 0 || limit > searchHardLimit {
 		limit = searchHardLimit
@@ -143,7 +149,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 	// 超量用户（令牌数超过上限）只允许精确搜索，禁止模糊搜索
 	maxTokens := operation_setting.GetMaxUserTokens()
 	hasFuzzy := strings.Contains(keyword, "%") || strings.Contains(token, "%")
-	if hasFuzzy {
+	if hasFuzzy && !allUsers {
 		count, err := CountUserTokens(userId)
 		if err != nil {
 			common.SysLog("failed to count user tokens: " + err.Error())
@@ -154,7 +160,10 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		}
 	}
 
-	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	baseQuery := DB.Model(&Token{})
+	if !allUsers {
+		baseQuery = baseQuery.Where("user_id = ?", userId)
+	}
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -172,8 +181,12 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		baseQuery = baseQuery.Where(commonKeyCol+" LIKE ? ESCAPE '!'", tokenPattern)
 	}
 
-	// 先查匹配总数（用于分页，受 maxTokens 上限保护，避免全表 COUNT）
-	err = baseQuery.Limit(maxTokens).Count(&total).Error
+	// 先查匹配总数（用于分页；普通用户受 maxTokens 上限保护，避免全表 COUNT）
+	countQuery := baseQuery
+	if !allUsers {
+		countQuery = countQuery.Limit(maxTokens)
+	}
+	err = countQuery.Count(&total).Error
 	if err != nil {
 		common.SysError("failed to count search tokens: " + err.Error())
 		return nil, 0, errors.New("搜索令牌失败")
@@ -186,6 +199,14 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		return nil, 0, errors.New("搜索令牌失败")
 	}
 	return tokens, total, nil
+}
+
+func SearchUserTokens(userId int, keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
+	return searchTokens(userId, false, keyword, token, offset, limit)
+}
+
+func SearchAllTokens(keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
+	return searchTokens(0, true, keyword, token, offset, limit)
 }
 
 func ValidateUserToken(key string) (token *Token, err error) {
@@ -442,6 +463,12 @@ func CountUserTokens(userId int) (int64, error) {
 	return total, err
 }
 
+func CountAllTokens() (int64, error) {
+	var total int64
+	err := DB.Model(&Token{}).Count(&total).Error
+	return total, err
+}
+
 // BatchDeleteTokens 删除指定用户的一组令牌，返回成功删除数量
 func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	if len(ids) == 0 {
@@ -476,10 +503,51 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	return len(tokens), nil
 }
 
+func BatchDeleteAllTokens(ids []int) (int, error) {
+	if len(ids) == 0 {
+		return 0, errors.New("ids 不能为空！")
+	}
+
+	tx := DB.Begin()
+
+	var tokens []Token
+	if err := tx.Where("id IN (?)", ids).Find(&tokens).Error; err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+
+	if err := tx.Where("id IN (?)", ids).Delete(&Token{}).Error; err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return 0, err
+	}
+
+	if common.RedisEnabled {
+		gopool.Go(func() {
+			for _, t := range tokens {
+				_ = cacheDeleteToken(t.Key)
+			}
+		})
+	}
+
+	return len(tokens), nil
+}
+
 func GetTokenKeysByIds(ids []int, userId int) ([]Token, error) {
 	var tokens []Token
 	err := DB.Select("id", commonKeyCol).
 		Where("user_id = ? AND id IN (?)", userId, ids).
+		Find(&tokens).Error
+	return tokens, err
+}
+
+func GetTokenKeysByIdsAll(ids []int) ([]Token, error) {
+	var tokens []Token
+	err := DB.Select("id", commonKeyCol).
+		Where("id IN (?)", ids).
 		Find(&tokens).Error
 	return tokens, err
 }

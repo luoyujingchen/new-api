@@ -30,9 +30,9 @@ import {
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getUserModels, getUserGroups } from '@/lib/api'
-import { getSelectableApplications } from '@/features/applications/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { cn } from '@/lib/utils'
+import { useIsSuperAdmin } from '@/hooks/use-admin'
 import { useStatus } from '@/hooks/use-status'
 import { Button } from '@/components/ui/button'
 import {
@@ -70,6 +70,8 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { DateTimePicker } from '@/components/datetime-picker'
 import { MultiSelect } from '@/components/multi-select'
+import { getSelectableApplications } from '@/features/applications/api'
+import { type Application } from '@/features/applications/types'
 import { createApiKey, updateApiKey, getApiKey } from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -80,7 +82,6 @@ import {
   transformApiKeyToFormDefaults,
 } from '../lib'
 import { type ApiKey } from '../types'
-import { type Application } from '@/features/applications/types'
 import {
   ApiKeyGroupCombobox,
   type ApiKeyGroupOption,
@@ -136,6 +137,7 @@ export function ApiKeysMutateDrawer({
   const isUpdate = !!currentRow
   const { triggerRefresh } = useApiKeys()
   const { status } = useStatus()
+  const isSuperAdmin = useIsSuperAdmin()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const defaultUseAutoGroup = status?.default_use_auto_group === true
@@ -189,7 +191,9 @@ export function ApiKeysMutateDrawer({
         }
       })
     } else if (open && !isUpdate) {
-      form.reset(getApiKeyFormDefaultValues(defaultUseAutoGroup && backendHasAuto))
+      form.reset(
+        getApiKeyFormDefaultValues(defaultUseAutoGroup && backendHasAuto)
+      )
     }
   }, [open, isUpdate, currentRow, form, defaultUseAutoGroup, backendHasAuto])
 
@@ -198,7 +202,10 @@ export function ApiKeysMutateDrawer({
     if (groups.length === 0) return
     const currentGroup = form.getValues('group')
     if (currentGroup && !groups.some((g) => g.value === currentGroup)) {
-      const fallback = groups.find((g) => g.value === 'default')?.value ?? groups[0]?.value ?? ''
+      const fallback =
+        groups.find((g) => g.value === 'default')?.value ??
+        groups[0]?.value ??
+        ''
       form.setValue('group', fallback)
       if (currentGroup === 'auto') {
         form.setValue('cross_group_retry', false)
@@ -387,7 +394,7 @@ export function ApiKeysMutateDrawer({
 
               <FormField
                 control={form.control}
-                name="application_id"
+                name='application_id'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t('Application')}</FormLabel>
@@ -395,10 +402,14 @@ export function ApiKeysMutateDrawer({
                       <select
                         {...field}
                         value={field.value ?? ''}
-                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value ? Number(e.target.value) : null
+                          )
+                        }
+                        className='border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50'
                       >
-                        <option value="">{t('No Application')}</option>
+                        <option value=''>{t('No Application')}</option>
                         {applications.map((app: Application) => (
                           <option key={app.id} value={app.id}>
                             {app.name}
@@ -407,7 +418,9 @@ export function ApiKeysMutateDrawer({
                       </select>
                     </FormControl>
                     <FormDescription>
-                      {t('Associate this API key with an application for usage tracking')}
+                      {t(
+                        'Associate this API key with an application for usage tracking'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -593,77 +606,83 @@ export function ApiKeysMutateDrawer({
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className='space-y-3 border-t p-3 sm:space-y-4 sm:p-4'>
-                    <FormField
-                      control={form.control}
-                      name='queue_priority'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('Queue Priority')}</FormLabel>
-                          <Select
-                            onValueChange={(value) => {
-                              if (value !== null) {
-                                field.onChange(parseInt(value, 10))
-                              }
-                            }}
-                            value={String(field.value)}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {QUEUE_PRIORITY_OPTIONS.map((value) => (
-                                <SelectItem key={value} value={value}>
-                                  {value}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormDescription>
-                            {t(
-                              'Higher priority requests get more scheduling chances when the model queue is busy.'
-                            )}
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    {isSuperAdmin && (
+                      <>
+                        <FormField
+                          control={form.control}
+                          name='queue_priority'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{t('Queue Priority')}</FormLabel>
+                              <Select
+                                onValueChange={(value) => {
+                                  if (value !== null) {
+                                    field.onChange(parseInt(value, 10))
+                                  }
+                                }}
+                                value={String(field.value)}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {QUEUE_PRIORITY_OPTIONS.map((value) => (
+                                    <SelectItem key={value} value={value}>
+                                      {value}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormDescription>
+                                {t(
+                                  'Higher priority requests get more scheduling chances when the model queue is busy.'
+                                )}
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
 
-                    <FormField
-                      control={form.control}
-                      name='queue_timeout'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('Queue Timeout (seconds)')}</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              type='number'
-                              min='0'
-                              step='1'
-                              placeholder={t(
-                                '0 uses the global queue timeout'
-                              )}
-                              onChange={(e) =>
-                                field.onChange(
-                                  Math.max(
-                                    0,
-                                    parseInt(e.target.value, 10) || 0
-                                  )
-                                )
-                              }
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            {t(
-                              'Set how long this key can wait in queue. Use 0 to follow the system default.'
-                            )}
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                        <FormField
+                          control={form.control}
+                          name='queue_timeout'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>
+                                {t('Queue Timeout (seconds)')}
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  type='number'
+                                  min='0'
+                                  step='1'
+                                  placeholder={t(
+                                    '0 uses the global queue timeout'
+                                  )}
+                                  onChange={(e) =>
+                                    field.onChange(
+                                      Math.max(
+                                        0,
+                                        parseInt(e.target.value, 10) || 0
+                                      )
+                                    )
+                                  }
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                {t(
+                                  'Set how long this key can wait in queue. Use 0 to follow the system default.'
+                                )}
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </>
+                    )}
 
                     <FormField
                       control={form.control}

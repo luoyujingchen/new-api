@@ -50,15 +50,40 @@ func validateTokenApplicationSelection(c *gin.Context, applicationId *int64) boo
 	return true
 }
 
+func isRootUser(c *gin.Context) bool {
+	return c.GetInt("role") >= common.RoleRootUser
+}
+
+func getTokenForCurrentUser(c *gin.Context, id int) (*model.Token, error) {
+	if isRootUser(c) {
+		return model.GetTokenById(id)
+	}
+	return model.GetTokenByIds(id, c.GetInt("id"))
+}
+
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	var (
+		tokens []*model.Token
+		total  int64
+		err    error
+	)
+	if isRootUser(c) {
+		tokens, err = model.GetAllTokens(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		if err == nil {
+			total, err = model.CountAllTokens()
+		}
+	} else {
+		tokens, err = model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		if err == nil {
+			total, err = model.CountUserTokens(userId)
+		}
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.ApiSuccess(c, pageInfo)
@@ -71,7 +96,16 @@ func SearchTokens(c *gin.Context) {
 
 	pageInfo := common.GetPageQuery(c)
 
-	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	var (
+		tokens []*model.Token
+		total  int64
+		err    error
+	)
+	if isRootUser(c) {
+		tokens, total, err = model.SearchAllTokens(keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	} else {
+		tokens, total, err = model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -83,12 +117,11 @@ func SearchTokens(c *gin.Context) {
 
 func GetToken(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
-	userId := c.GetInt("id")
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	token, err := getTokenForCurrentUser(c, id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -98,12 +131,11 @@ func GetToken(c *gin.Context) {
 
 func GetTokenKey(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
-	userId := c.GetInt("id")
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	token, err := getTokenForCurrentUser(c, id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -223,6 +255,12 @@ func AddToken(c *gin.Context) {
 	if !validateTokenApplicationSelection(c, token.ApplicationId) {
 		return
 	}
+	queuePriority := 5
+	queueTimeout := 0
+	if isRootUser(c) {
+		queuePriority = setting.NormalizeQueuePriority(token.QueuePriority)
+		queueTimeout = setting.NormalizeQueueTimeoutOption(token.QueueTimeout)
+	}
 	key, err := common.GenerateKey()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
@@ -242,8 +280,8 @@ func AddToken(c *gin.Context) {
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
-		QueuePriority:      setting.NormalizeQueuePriority(token.QueuePriority),
-		QueueTimeout:       setting.NormalizeQueueTimeoutOption(token.QueueTimeout),
+		QueuePriority:      queuePriority,
+		QueueTimeout:       queueTimeout,
 		CrossGroupRetry:    token.CrossGroupRetry,
 		ApplicationId:      token.ApplicationId,
 	}
@@ -261,7 +299,17 @@ func AddToken(c *gin.Context) {
 func DeleteToken(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
-	err := model.DeleteTokenById(id, userId)
+	var err error
+	if isRootUser(c) {
+		token, getErr := model.GetTokenById(id)
+		if getErr != nil {
+			err = getErr
+		} else {
+			err = token.Delete()
+		}
+	} else {
+		err = model.DeleteTokenById(id, userId)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -273,7 +321,6 @@ func DeleteToken(c *gin.Context) {
 }
 
 func UpdateToken(c *gin.Context) {
-	userId := c.GetInt("id")
 	statusOnly := c.Query("status_only")
 	token := model.Token{}
 	err := c.ShouldBindJSON(&token)
@@ -299,7 +346,7 @@ func UpdateToken(c *gin.Context) {
 	if !validateTokenApplicationSelection(c, token.ApplicationId) {
 		return
 	}
-	cleanToken, err := model.GetTokenByIds(token.Id, userId)
+	cleanToken, err := getTokenForCurrentUser(c, token.Id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -326,8 +373,10 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
-		cleanToken.QueuePriority = setting.NormalizeQueuePriority(token.QueuePriority)
-		cleanToken.QueueTimeout = setting.NormalizeQueueTimeoutOption(token.QueueTimeout)
+		if isRootUser(c) {
+			cleanToken.QueuePriority = setting.NormalizeQueuePriority(token.QueuePriority)
+			cleanToken.QueueTimeout = setting.NormalizeQueueTimeoutOption(token.QueueTimeout)
+		}
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 		cleanToken.ApplicationId = token.ApplicationId
 	}
@@ -354,7 +403,15 @@ func DeleteTokenBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
-	count, err := model.BatchDeleteTokens(tokenBatch.Ids, userId)
+	var (
+		count int
+		err   error
+	)
+	if isRootUser(c) {
+		count, err = model.BatchDeleteAllTokens(tokenBatch.Ids)
+	} else {
+		count, err = model.BatchDeleteTokens(tokenBatch.Ids, userId)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -377,7 +434,15 @@ func GetTokenKeysBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
-	tokens, err := model.GetTokenKeysByIds(tokenBatch.Ids, userId)
+	var (
+		tokens []model.Token
+		err    error
+	)
+	if isRootUser(c) {
+		tokens, err = model.GetTokenKeysByIdsAll(tokenBatch.Ids)
+	} else {
+		tokens, err = model.GetTokenKeysByIds(tokenBatch.Ids, userId)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return

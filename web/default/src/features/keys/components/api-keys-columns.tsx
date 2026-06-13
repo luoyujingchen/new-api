@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { getUserGroups } from '@/lib/api'
 import { formatQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useIsSuperAdmin } from '@/hooks/use-admin'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Progress } from '@/components/ui/progress'
 import {
@@ -70,6 +71,7 @@ function useGroupRatios(): Record<string, number> {
 export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
   const { t } = useTranslation()
   const groupRatios = useGroupRatios()
+  const isSuperAdmin = useIsSuperAdmin()
   return [
     {
       id: 'select',
@@ -106,6 +108,22 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
       ),
       meta: { label: t('Name'), mobileTitle: true },
     },
+    ...(isSuperAdmin
+      ? [
+          {
+            accessorKey: 'user_id',
+            header: ({ column }) => (
+              <DataTableColumnHeader column={column} title={t('User ID')} />
+            ),
+            cell: ({ row }) => (
+              <span className='text-muted-foreground font-mono text-xs tabular-nums'>
+                {row.original.user_id ?? '-'}
+              </span>
+            ),
+            meta: { label: t('User ID'), mobileHidden: true },
+          } satisfies ColumnDef<ApiKey>,
+        ]
+      : []),
     {
       accessorKey: 'status',
       header: ({ column }) => (

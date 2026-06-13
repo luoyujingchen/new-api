@@ -35,6 +35,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useIsSuperAdmin } from '@/hooks/use-admin'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import {
   Empty,
@@ -101,6 +102,7 @@ function ApiKeysMobileList({
   isLoading: boolean
 }) {
   const { t } = useTranslation()
+  const isSuperAdmin = useIsSuperAdmin()
   const rows = table.getRowModel().rows
 
   if (isLoading) return <ApiKeysMobileSkeleton />
@@ -180,6 +182,15 @@ function ApiKeysMobileList({
                 </span>
               )}
             </div>
+
+            {isSuperAdmin && (
+              <div className='flex items-center justify-between gap-2 text-xs'>
+                <span className='text-muted-foreground'>{t('User ID')}</span>
+                <span className='font-mono font-medium tabular-nums'>
+                  {apiKey.user_id ?? '-'}
+                </span>
+              </div>
+            )}
           </div>
         )
       })}
@@ -226,14 +237,18 @@ export function ApiKeysTable() {
       const hasFilter = globalFilter?.trim()
 
       if (hasFilter) {
-        const result = await searchApiKeys({ keyword: globalFilter })
+        const result = await searchApiKeys({
+          keyword: globalFilter,
+          p: pagination.pageIndex + 1,
+          size: pagination.pageSize,
+        })
         if (!result.success) {
           toast.error(result.message || t(ERROR_MESSAGES.SEARCH_FAILED))
           return { items: [], total: 0 }
         }
         return {
-          items: result.data || [],
-          total: result.data?.length || 0,
+          items: result.data?.items || [],
+          total: result.data?.total || 0,
         }
       }
 
