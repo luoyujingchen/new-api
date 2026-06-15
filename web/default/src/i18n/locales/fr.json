@@ -4689,6 +4689,8 @@
     "Shows whether queueing is currently enabled for this model. It is not an execution health indicator.": "Indique si la mise en file d'attente est actuellement activée pour ce modèle. Ce n'est pas un indicateur de santé d'exécution.",
     "The monitor refreshes automatically every 5 seconds. Hover or tap the help icons for metric definitions, or click a model name for live details.": "Le moniteur s'actualise automatiquement toutes les 5 secondes. Survolez ou touchez les icônes d'aide des en-têtes pour voir la définition des métriques, ou cliquez sur un nom de modèle pour voir les détails en direct.",
     "Zoom": "Zoom",
+    "Idle release seconds": "Secondes avant libération en inactivité",
+    "Lease turns": "Tours conservés",
     "Long context": "Contexte long",
     "Long context controls": "Controles de contexte long",
     "Long context tiers": "Paliers de contexte long",
@@ -4708,6 +4710,7 @@
     "Running slots and queued requests for configured long-context thresholds.": "Emplacements en cours et requetes en file pour les seuils de contexte long configures.",
     "Threshold tokens": "Tokens de seuil",
     "queued": "en file",
-    "running": "en cours"
+    "running": "en cours",
+    "turns": "tours"
   }
 }

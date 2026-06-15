@@ -4689,6 +4689,8 @@
     "Shows whether queueing is currently enabled for this model. It is not an execution health indicator.": "显示该模型当前是否启用排队。这不是运行健康状态指标。",
     "The monitor refreshes automatically every 5 seconds. Hover or tap the help icons for metric definitions, or click a model name for live details.": "监控页每 5 秒自动刷新一次。悬浮或点击表头的帮助图标可查看指标说明，点击模型名称可查看实时详情。",
     "Zoom": "缩放",
+    "Idle release seconds": "空闲释放秒数",
+    "Lease turns": "保留轮数",
     "Long context": "长上下文",
     "Long context controls": "长上下文控制",
     "Long context tiers": "长上下文档位",
@@ -4708,6 +4710,7 @@
     "Running slots and queued requests for configured long-context thresholds.": "已配置长上下文阈值的运行槽位和排队请求。",
     "Threshold tokens": "阈值 token",
     "queued": "排队中",
-    "running": "运行中"
+    "running": "运行中",
+    "turns": "轮"
   }
 }

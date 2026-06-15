@@ -2,10 +2,20 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/types"
 	"github.com/stretchr/testify/require"
 )
+
+func testQueueTier(threshold int, maxRunning int) types.QueueLongContextTier {
+	return types.QueueLongContextTier{
+		ThresholdTokens:         threshold,
+		MaxRunning:              maxRunning,
+		LeaseTurns:              types.DefaultQueueLongContextLeaseTurns,
+		LeaseIdleTimeoutSeconds: types.DefaultQueueLongContextLeaseIdleTimeoutSeconds,
+	}
+}
 
 func TestMatchLongContextTiersCumulative(t *testing.T) {
 	tiers := []types.QueueLongContextTier{
@@ -17,13 +27,13 @@ func TestMatchLongContextTiersCumulative(t *testing.T) {
 
 	matchedFirstTier := MatchLongContextTiers(20, tiers)
 	require.Equal(t, []types.QueueLongContextTier{
-		{ThresholdTokens: 20, MaxRunning: 4},
+		testQueueTier(20, 4),
 	}, matchedFirstTier)
 
 	matchedSecondTier := MatchLongContextTiers(40, tiers)
 	require.Equal(t, []types.QueueLongContextTier{
-		{ThresholdTokens: 20, MaxRunning: 4},
-		{ThresholdTokens: 40, MaxRunning: 1},
+		testQueueTier(20, 4),
+		testQueueTier(40, 1),
 	}, matchedSecondTier)
 }
 
@@ -139,4 +149,132 @@ func TestModelQueueLongContextSlotsAreCumulativeAcrossTiers(t *testing.T) {
 
 	require.True(t, queue.ReleaseLongContextSlots(midTier))
 	require.True(t, queue.ReleaseLongContextSlots(secondHighTier))
+}
+
+func TestLongContextLeaseRetainsSlotsUntilTurnsExhausted(t *testing.T) {
+	tiers := []types.QueueLongContextTier{
+		{ThresholdTokens: 20, MaxRunning: 1, LeaseTurns: 3, LeaseIdleTimeoutSeconds: 10},
+	}
+	queue := newModelQueue("deepseek-v4-flash")
+	queueService := &RequestQueueService{
+		modelQueues:       map[string]*ModelQueue{"deepseek-v4-flash": queue},
+		retryEvents:       make(chan string, 10),
+		longContextLeases: make(map[string]*LongContextLeaseUse),
+	}
+
+	firstLong := &QueuedRequest{
+		ID:                    "first-long",
+		TokenID:               11,
+		CompanyID:             22,
+		ModelName:             "deepseek-v4-flash",
+		Priority:              5,
+		EstimatedPromptTokens: 20,
+	}
+	_, err := queue.Enqueue(firstLong, 0)
+	require.NoError(t, err)
+	candidate, _, found := queue.AcquireCandidateByWeight(nil, nil, tiers)
+	require.True(t, found)
+	require.Equal(t, firstLong, candidate)
+	require.True(t, queue.Dequeue(candidate))
+
+	lease := queueService.StartLongContextLease(candidate)
+	require.NotNil(t, lease)
+	require.Equal(t, 2, lease.RemainingTurns)
+	require.False(t, queueService.FinishLongContextLeaseUse(lease.ID))
+
+	secondLong := &QueuedRequest{
+		ID:                    "second-long",
+		TokenID:               11,
+		CompanyID:             22,
+		ModelName:             "deepseek-v4-flash",
+		Priority:              5,
+		EstimatedPromptTokens: 20,
+	}
+	_, err = queue.Enqueue(secondLong, 0)
+	require.NoError(t, err)
+	candidate, _, found = queue.AcquireCandidateByWeight(nil, nil, tiers)
+	require.True(t, found)
+	require.Nil(t, candidate)
+
+	lease, ok := queueService.TryBeginLongContextLeaseUse(lease.ID, LongContextLeaseUseOptions{
+		ModelName:        "deepseek-v4-flash",
+		TokenID:          11,
+		CompanyID:        22,
+		LongContextTiers: MatchLongContextTiers(20, tiers),
+	})
+	require.True(t, ok)
+	require.Equal(t, 1, lease.RemainingTurns)
+	require.False(t, queueService.FinishLongContextLeaseUse(lease.ID))
+
+	candidate, _, found = queue.AcquireCandidateByWeight(nil, nil, tiers)
+	require.True(t, found)
+	require.Nil(t, candidate)
+
+	lease, ok = queueService.TryBeginLongContextLeaseUse(lease.ID, LongContextLeaseUseOptions{
+		ModelName:        "deepseek-v4-flash",
+		TokenID:          11,
+		CompanyID:        22,
+		LongContextTiers: MatchLongContextTiers(20, tiers),
+	})
+	require.True(t, ok)
+	require.Equal(t, 0, lease.RemainingTurns)
+	require.True(t, queueService.FinishLongContextLeaseUse(lease.ID))
+
+	candidate, _, found = queue.AcquireCandidateByWeight(nil, nil, tiers)
+	require.True(t, found)
+	require.Equal(t, secondLong, candidate)
+	require.True(t, queue.Dequeue(candidate))
+	require.True(t, queue.ReleaseLongContextSlots(candidate))
+}
+
+func TestLongContextLeaseIdleTimeoutReleasesSlots(t *testing.T) {
+	tiers := []types.QueueLongContextTier{
+		{ThresholdTokens: 20, MaxRunning: 1, LeaseTurns: 3, LeaseIdleTimeoutSeconds: 1},
+	}
+	queue := newModelQueue("deepseek-v4-flash")
+	queueService := &RequestQueueService{
+		modelQueues:       map[string]*ModelQueue{"deepseek-v4-flash": queue},
+		retryEvents:       make(chan string, 10),
+		longContextLeases: make(map[string]*LongContextLeaseUse),
+	}
+
+	firstLong := &QueuedRequest{
+		ID:                    "first-long",
+		TokenID:               11,
+		CompanyID:             22,
+		ModelName:             "deepseek-v4-flash",
+		Priority:              5,
+		EstimatedPromptTokens: 20,
+	}
+	_, err := queue.Enqueue(firstLong, 0)
+	require.NoError(t, err)
+	candidate, _, found := queue.AcquireCandidateByWeight(nil, nil, tiers)
+	require.True(t, found)
+	require.Equal(t, firstLong, candidate)
+	require.True(t, queue.Dequeue(candidate))
+
+	lease := queueService.StartLongContextLease(candidate)
+	require.NotNil(t, lease)
+	require.False(t, queueService.FinishLongContextLeaseUse(lease.ID))
+
+	secondLong := &QueuedRequest{
+		ID:                    "second-long",
+		TokenID:               11,
+		CompanyID:             22,
+		ModelName:             "deepseek-v4-flash",
+		Priority:              5,
+		EstimatedPromptTokens: 20,
+	}
+	_, err = queue.Enqueue(secondLong, 0)
+	require.NoError(t, err)
+	candidate, _, found = queue.AcquireCandidateByWeight(nil, nil, tiers)
+	require.True(t, found)
+	require.Nil(t, candidate)
+
+	require.Eventually(t, func() bool {
+		candidate, _, found = queue.AcquireCandidateByWeight(nil, nil, tiers)
+		return found && candidate == secondLong
+	}, 2*time.Second, 20*time.Millisecond)
+	require.True(t, queue.Dequeue(candidate))
+	require.True(t, queue.ReleaseLongContextSlots(candidate))
 }

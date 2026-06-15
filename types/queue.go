@@ -5,16 +5,25 @@ import (
 	"sort"
 )
 
+const (
+	DefaultQueueLongContextLeaseTurns              = 20
+	DefaultQueueLongContextLeaseIdleTimeoutSeconds = 10
+)
+
 type QueueLongContextTier struct {
-	ThresholdTokens int `json:"threshold_tokens"`
-	MaxRunning      int `json:"max_running"`
+	ThresholdTokens         int `json:"threshold_tokens"`
+	MaxRunning              int `json:"max_running"`
+	LeaseTurns              int `json:"lease_turns"`
+	LeaseIdleTimeoutSeconds int `json:"lease_idle_timeout_seconds"`
 }
 
 type QueueLongContextTierStatus struct {
-	ThresholdTokens int `json:"threshold_tokens"`
-	MaxRunning      int `json:"max_running"`
-	Running         int `json:"running"`
-	Queued          int `json:"queued"`
+	ThresholdTokens         int `json:"threshold_tokens"`
+	MaxRunning              int `json:"max_running"`
+	LeaseTurns              int `json:"lease_turns"`
+	LeaseIdleTimeoutSeconds int `json:"lease_idle_timeout_seconds"`
+	Running                 int `json:"running"`
+	Queued                  int `json:"queued"`
 }
 
 func NormalizeQueueLongContextTiers(tiers []QueueLongContextTier) ([]QueueLongContextTier, error) {
@@ -30,6 +39,18 @@ func NormalizeQueueLongContextTiers(tiers []QueueLongContextTier) ([]QueueLongCo
 		}
 		if tier.MaxRunning <= 0 {
 			return nil, errors.New("max_running must be greater than 0")
+		}
+		if tier.LeaseTurns < 0 {
+			return nil, errors.New("lease_turns must be greater than or equal to 0")
+		}
+		if tier.LeaseTurns == 0 {
+			tier.LeaseTurns = DefaultQueueLongContextLeaseTurns
+		}
+		if tier.LeaseIdleTimeoutSeconds < 0 {
+			return nil, errors.New("lease_idle_timeout_seconds must be greater than or equal to 0")
+		}
+		if tier.LeaseIdleTimeoutSeconds == 0 {
+			tier.LeaseIdleTimeoutSeconds = DefaultQueueLongContextLeaseIdleTimeoutSeconds
 		}
 		if _, ok := seen[tier.ThresholdTokens]; ok {
 			return nil, errors.New("threshold_tokens must be unique")

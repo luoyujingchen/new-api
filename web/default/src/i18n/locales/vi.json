@@ -4689,6 +4689,8 @@
     "Shows whether queueing is currently enabled for this model. It is not an execution health indicator.": "Cho biết hàng đợi hiện có được bật cho mô hình này hay không. Đây không phải chỉ báo tình trạng thực thi.",
     "The monitor refreshes automatically every 5 seconds. Hover or tap the help icons for metric definitions, or click a model name for live details.": "Trang giám sát tự động làm mới mỗi 5 giây. Di chuột hoặc chạm vào biểu tượng trợ giúp ở tiêu đề cột để xem giải thích chỉ số, hoặc nhấp vào tên mô hình để xem chi tiết trực tiếp.",
     "Zoom": "Zoom",
+    "Idle release seconds": "Số giây nhàn rỗi trước khi giải phóng",
+    "Lease turns": "Số lượt giữ chỗ",
     "Long context": "Ngữ cảnh dài",
     "Long context controls": "Điều khiển ngữ cảnh dài",
     "Long context tiers": "Tầng ngữ cảnh dài",
@@ -4708,6 +4710,7 @@
     "Running slots and queued requests for configured long-context thresholds.": "Khe đang chạy và yêu cầu trong hàng đợi cho các ngưỡng ngữ cảnh dài đã cấu hình.",
     "Threshold tokens": "Token ngưỡng",
     "queued": "trong hàng đợi",
-    "running": "đang chạy"
+    "running": "đang chạy",
+    "turns": "lượt"
   }
 }

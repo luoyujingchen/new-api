@@ -4689,6 +4689,8 @@
     "Shows whether queueing is currently enabled for this model. It is not an execution health indicator.": "Показывает, включена ли сейчас очередь для этой модели. Это не индикатор состояния выполнения.",
     "The monitor refreshes automatically every 5 seconds. Hover or tap the help icons for metric definitions, or click a model name for live details.": "Монитор автоматически обновляется каждые 5 секунд. Наведите курсор или коснитесь значков справки в заголовках столбцов, чтобы увидеть описание метрик, либо нажмите на имя модели, чтобы открыть подробности в реальном времени.",
     "Zoom": "Zoom",
+    "Idle release seconds": "Секунд до освобождения при простое",
+    "Lease turns": "Сохраненные ходы",
     "Long context": "Длинный контекст",
     "Long context controls": "Управление длинным контекстом",
     "Long context tiers": "Уровни длинного контекста",
@@ -4708,6 +4710,7 @@
     "Running slots and queued requests for configured long-context thresholds.": "Слоты выполнения и запросы в очереди для настроенных порогов длинного контекста.",
     "Threshold tokens": "Порог токенов",
     "queued": "в очереди",
-    "running": "выполняется"
+    "running": "выполняется",
+    "turns": "ходов"
   }
 }

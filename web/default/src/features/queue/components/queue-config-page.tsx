@@ -32,7 +32,14 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { deleteQueueConfig, getQueueConfigs, upsertQueueConfig } from '../api'
-import type { QueueConfig, QueueConfigFormData } from '../types'
+import type {
+  QueueConfig,
+  QueueConfigFormData,
+  QueueLongContextTier,
+} from '../types'
+
+const DEFAULT_QUEUE_LEASE_TURNS = 20
+const DEFAULT_QUEUE_LEASE_IDLE_TIMEOUT_SECONDS = 10
 
 const EMPTY_FORM: QueueConfigFormData = {
   model_name: '',
@@ -44,6 +51,19 @@ const EMPTY_FORM: QueueConfigFormData = {
 
 function normalizeTierValue(value: string): number {
   return Math.max(0, parseInt(value, 10) || 0)
+}
+
+function normalizeLongContextTierForForm(
+  tier: Partial<QueueLongContextTier>
+): QueueLongContextTier {
+  return {
+    threshold_tokens: tier.threshold_tokens ?? 64000,
+    max_running: tier.max_running ?? 1,
+    lease_turns: tier.lease_turns || DEFAULT_QUEUE_LEASE_TURNS,
+    lease_idle_timeout_seconds:
+      tier.lease_idle_timeout_seconds ||
+      DEFAULT_QUEUE_LEASE_IDLE_TIMEOUT_SECONDS,
+  }
 }
 
 export function QueueConfigPage() {
@@ -115,7 +135,9 @@ export function QueueConfigPage() {
       enabled: config.enabled,
       max_queue_size: config.max_queue_size,
       queue_timeout: config.queue_timeout,
-      long_context_tiers: config.long_context_tiers || [],
+      long_context_tiers: (config.long_context_tiers || []).map(
+        normalizeLongContextTierForForm
+      ),
     })
     setSheetOpen(true)
   }
@@ -146,7 +168,7 @@ export function QueueConfigPage() {
       ...current,
       long_context_tiers: [
         ...current.long_context_tiers,
-        { threshold_tokens: 64000, max_running: 1 },
+        normalizeLongContextTierForForm({}),
       ],
     }))
   }
@@ -163,7 +185,11 @@ export function QueueConfigPage() {
     )
     if (
       longContextTiers.some(
-        (tier) => tier.threshold_tokens <= 0 || tier.max_running <= 0
+        (tier) =>
+          tier.threshold_tokens <= 0 ||
+          tier.max_running <= 0 ||
+          tier.lease_turns <= 0 ||
+          tier.lease_idle_timeout_seconds <= 0
       )
     ) {
       toast.error(t('Long task tier values must be greater than 0'))
@@ -316,14 +342,16 @@ export function QueueConfigPage() {
                       <TableCell>
                         <div className='flex flex-wrap gap-1'>
                           {(config.long_context_tiers || []).length > 0 ? (
-                            (config.long_context_tiers || []).map((tier) => (
-                              <Badge
-                                key={tier.threshold_tokens}
-                                variant='outline'
-                              >
-                                {`>=${tier.threshold_tokens}: ${tier.max_running}`}
-                              </Badge>
-                            ))
+                            (config.long_context_tiers || [])
+                              .map(normalizeLongContextTierForForm)
+                              .map((tier) => (
+                                <Badge
+                                  key={tier.threshold_tokens}
+                                  variant='outline'
+                                >
+                                  {`>=${tier.threshold_tokens}: ${tier.max_running} · ${tier.lease_turns} ${t('turns')} · ${tier.lease_idle_timeout_seconds}s`}
+                                </Badge>
+                              ))
                           ) : (
                             <span className='text-muted-foreground text-sm'>
                               {t('Not configured')}
@@ -505,7 +533,7 @@ export function QueueConfigPage() {
                   {formState.long_context_tiers.map((tier, index) => (
                     <div
                       key={`${tier.threshold_tokens}-${index}`}
-                      className='grid gap-3 rounded-md border p-3 sm:grid-cols-[1fr_1fr_auto]'
+                      className='grid gap-3 rounded-md border p-3 sm:grid-cols-2'
                     >
                       <div className='space-y-2'>
                         <Label htmlFor={`queue-tier-threshold-${index}`}>
@@ -545,16 +573,54 @@ export function QueueConfigPage() {
                           }
                         />
                       </div>
-                      <div className='flex items-end'>
+                      <div className='space-y-2'>
+                        <Label htmlFor={`queue-tier-lease-turns-${index}`}>
+                          {t('Lease turns')}
+                        </Label>
+                        <Input
+                          id={`queue-tier-lease-turns-${index}`}
+                          type='number'
+                          min='1'
+                          step='1'
+                          value={tier.lease_turns}
+                          onChange={(event) =>
+                            updateLongContextTier(index, {
+                              lease_turns: normalizeTierValue(
+                                event.target.value
+                              ),
+                            })
+                          }
+                        />
+                      </div>
+                      <div className='space-y-2'>
+                        <Label htmlFor={`queue-tier-lease-idle-${index}`}>
+                          {t('Idle release seconds')}
+                        </Label>
+                        <Input
+                          id={`queue-tier-lease-idle-${index}`}
+                          type='number'
+                          min='1'
+                          step='1'
+                          value={tier.lease_idle_timeout_seconds}
+                          onChange={(event) =>
+                            updateLongContextTier(index, {
+                              lease_idle_timeout_seconds: normalizeTierValue(
+                                event.target.value
+                              ),
+                            })
+                          }
+                        />
+                      </div>
+                      <div className='flex items-end sm:col-span-2'>
                         <Button
                           type='button'
                           variant='outline'
-                          size='icon'
                           className='text-destructive'
                           onClick={() => removeLongContextTier(index)}
                           aria-label={t('Remove tier')}
                         >
-                          <Trash2 className='h-4 w-4' />
+                          <Trash2 className='mr-2 h-4 w-4' />
+                          {t('Remove tier')}
                         </Button>
                       </div>
                     </div>

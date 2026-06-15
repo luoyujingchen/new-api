@@ -22,6 +22,12 @@ import (
 
 const requestQueueThroughputWindow = 60 * time.Second
 
+const (
+	QueueLeaseIDHeader                 = "X-Queue-Lease-ID"
+	QueueLeaseRemainingHeader          = "X-Queue-Lease-Remaining"
+	QueueLeaseIdleTimeoutSecondsHeader = "X-Queue-Lease-Idle-Timeout-Seconds"
+)
+
 type PositionNotifier func(position int, estimatedWaitSec int)
 type QueueCanProceed func() (bool, error)
 
@@ -70,8 +76,49 @@ type QueueFullError struct {
 	MaxSize   int
 }
 
+type LongContextLeaseUseOptions struct {
+	ModelName        string
+	TokenID          int
+	CompanyID        int64
+	LongContextTiers []types.QueueLongContextTier
+}
+
+type LongContextLeaseUse struct {
+	ID                 string
+	RemainingTurns     int
+	IdleTimeoutSeconds int
+	LeaseTurns         int
+	ThresholdTokens    int
+	leaseIdleTimeout   time.Duration
+	holder             *QueuedRequest
+	timer              *time.Timer
+	active             bool
+}
+
 func (e *QueueFullError) Error() string {
 	return fmt.Sprintf("queue is full for model %s (max size: %d)", e.ModelName, e.MaxSize)
+}
+
+func (l *LongContextLeaseUse) snapshot() *LongContextLeaseUse {
+	if l == nil {
+		return nil
+	}
+	return &LongContextLeaseUse{
+		ID:                 l.ID,
+		RemainingTurns:     l.RemainingTurns,
+		IdleTimeoutSeconds: l.IdleTimeoutSeconds,
+		LeaseTurns:         l.LeaseTurns,
+		ThresholdTokens:    l.ThresholdTokens,
+	}
+}
+
+func (l *LongContextLeaseUse) matches(options LongContextLeaseUseOptions) bool {
+	if l == nil || l.holder == nil {
+		return false
+	}
+	return l.holder.ModelName == strings.TrimSpace(options.ModelName) &&
+		l.holder.TokenID == options.TokenID &&
+		l.holder.CompanyID == options.CompanyID
 }
 
 type QueuedRequest struct {
@@ -451,10 +498,12 @@ func (q *ModelQueue) longContextTierStatusLocked(tiers []types.QueueLongContextT
 	status := make([]types.QueueLongContextTierStatus, 0, len(tiers))
 	for _, tier := range tiers {
 		status = append(status, types.QueueLongContextTierStatus{
-			ThresholdTokens: tier.ThresholdTokens,
-			MaxRunning:      tier.MaxRunning,
-			Running:         q.longContextRunning[tier.ThresholdTokens],
-			Queued:          queuedByThreshold[tier.ThresholdTokens],
+			ThresholdTokens:         tier.ThresholdTokens,
+			MaxRunning:              tier.MaxRunning,
+			LeaseTurns:              tier.LeaseTurns,
+			LeaseIdleTimeoutSeconds: tier.LeaseIdleTimeoutSeconds,
+			Running:                 q.longContextRunning[tier.ThresholdTokens],
+			Queued:                  queuedByThreshold[tier.ThresholdTokens],
 		})
 	}
 	return status
@@ -556,14 +605,17 @@ func (q *ModelQueue) cleanupThroughputLocked(now time.Time) {
 }
 
 type RequestQueueService struct {
-	mu          sync.RWMutex
-	modelQueues map[string]*ModelQueue
-	retryEvents chan string
+	mu                sync.RWMutex
+	modelQueues       map[string]*ModelQueue
+	retryEvents       chan string
+	leaseMu           sync.Mutex
+	longContextLeases map[string]*LongContextLeaseUse
 }
 
 var requestQueueService = &RequestQueueService{
-	modelQueues: make(map[string]*ModelQueue),
-	retryEvents: make(chan string, 256),
+	modelQueues:       make(map[string]*ModelQueue),
+	retryEvents:       make(chan string, 256),
+	longContextLeases: make(map[string]*LongContextLeaseUse),
 }
 
 func GetRequestQueueService() *RequestQueueService {
@@ -642,6 +694,153 @@ func (s *RequestQueueService) ReleaseLongContextSlots(req *QueuedRequest) bool {
 		s.NotifySchedulingRetry(req.ModelName)
 	}
 	return released
+}
+
+func (s *RequestQueueService) StartLongContextLease(req *QueuedRequest) *LongContextLeaseUse {
+	if req == nil || !req.longContextSlotsAcquired || len(req.LongContextTiers) == 0 {
+		return nil
+	}
+	tier, ok := highestLongContextTier(req.LongContextTiers)
+	if !ok {
+		return nil
+	}
+	leaseTurns := tier.LeaseTurns
+	if leaseTurns <= 0 {
+		leaseTurns = types.DefaultQueueLongContextLeaseTurns
+	}
+	idleTimeoutSeconds := tier.LeaseIdleTimeoutSeconds
+	if idleTimeoutSeconds <= 0 {
+		idleTimeoutSeconds = types.DefaultQueueLongContextLeaseIdleTimeoutSeconds
+	}
+	remainingTurns := leaseTurns - 1
+	if remainingTurns <= 0 {
+		return nil
+	}
+
+	lease := &LongContextLeaseUse{
+		ID:                 common.GetTimeString() + common.GetRandomString(16),
+		RemainingTurns:     remainingTurns,
+		IdleTimeoutSeconds: idleTimeoutSeconds,
+		LeaseTurns:         leaseTurns,
+		ThresholdTokens:    tier.ThresholdTokens,
+		leaseIdleTimeout:   time.Duration(idleTimeoutSeconds) * time.Second,
+		holder:             req,
+		active:             true,
+	}
+
+	s.leaseMu.Lock()
+	s.ensureLongContextLeaseMapLocked()
+	s.longContextLeases[lease.ID] = lease
+	s.leaseMu.Unlock()
+	return lease.snapshot()
+}
+
+func (s *RequestQueueService) TryBeginLongContextLeaseUse(id string, options LongContextLeaseUseOptions) (*LongContextLeaseUse, bool) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, false
+	}
+
+	s.leaseMu.Lock()
+	defer s.leaseMu.Unlock()
+
+	lease := s.longContextLeases[id]
+	if lease == nil || lease.active || lease.RemainingTurns <= 0 {
+		return nil, false
+	}
+	if !lease.matches(options) || !coversLongContextTiers(lease.holder.LongContextTiers, options.LongContextTiers) {
+		return nil, false
+	}
+	if lease.timer != nil {
+		lease.timer.Stop()
+		lease.timer = nil
+	}
+	lease.active = true
+	lease.RemainingTurns--
+	return lease.snapshot(), true
+}
+
+func (s *RequestQueueService) CancelLongContextLeaseUse(id string) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return
+	}
+
+	s.leaseMu.Lock()
+	defer s.leaseMu.Unlock()
+
+	lease := s.longContextLeases[id]
+	if lease == nil || !lease.active {
+		return
+	}
+	if lease.RemainingTurns < lease.LeaseTurns-1 {
+		lease.RemainingTurns++
+	}
+	lease.active = false
+	s.scheduleLongContextLeaseIdleReleaseLocked(lease)
+}
+
+func (s *RequestQueueService) FinishLongContextLeaseUse(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+
+	s.leaseMu.Lock()
+	lease := s.longContextLeases[id]
+	if lease == nil {
+		s.leaseMu.Unlock()
+		return false
+	}
+	lease.active = false
+	if lease.RemainingTurns > 0 {
+		s.scheduleLongContextLeaseIdleReleaseLocked(lease)
+		s.leaseMu.Unlock()
+		return false
+	}
+	holder := lease.holder
+	if lease.timer != nil {
+		lease.timer.Stop()
+	}
+	delete(s.longContextLeases, id)
+	s.leaseMu.Unlock()
+	return s.ReleaseLongContextSlots(holder)
+}
+
+func (s *RequestQueueService) scheduleLongContextLeaseIdleReleaseLocked(lease *LongContextLeaseUse) {
+	if lease == nil {
+		return
+	}
+	if lease.timer != nil {
+		lease.timer.Stop()
+	}
+	id := lease.ID
+	timeout := lease.leaseIdleTimeout
+	if timeout <= 0 {
+		timeout = time.Duration(types.DefaultQueueLongContextLeaseIdleTimeoutSeconds) * time.Second
+	}
+	lease.timer = time.AfterFunc(timeout, func() {
+		s.releaseLongContextLease(id)
+	})
+}
+
+func (s *RequestQueueService) releaseLongContextLease(id string) bool {
+	s.leaseMu.Lock()
+	lease := s.longContextLeases[id]
+	if lease == nil || lease.active {
+		s.leaseMu.Unlock()
+		return false
+	}
+	holder := lease.holder
+	delete(s.longContextLeases, id)
+	s.leaseMu.Unlock()
+	return s.ReleaseLongContextSlots(holder)
+}
+
+func (s *RequestQueueService) ensureLongContextLeaseMapLocked() {
+	if s.longContextLeases == nil {
+		s.longContextLeases = make(map[string]*LongContextLeaseUse)
+	}
 }
 
 func (s *RequestQueueService) NotifySchedulingRetry(modelName string) {
@@ -810,6 +1009,38 @@ func MatchLongContextTiers(promptTokens int, tiers []types.QueueLongContextTier)
 	return matched
 }
 
+func highestLongContextTier(tiers []types.QueueLongContextTier) (types.QueueLongContextTier, bool) {
+	normalized, err := types.NormalizeQueueLongContextTiers(tiers)
+	if err != nil || len(normalized) == 0 {
+		return types.QueueLongContextTier{}, false
+	}
+	return normalized[len(normalized)-1], true
+}
+
+func coversLongContextTiers(held []types.QueueLongContextTier, requested []types.QueueLongContextTier) bool {
+	if len(requested) == 0 {
+		return false
+	}
+	heldNormalized, err := types.NormalizeQueueLongContextTiers(held)
+	if err != nil || len(heldNormalized) == 0 {
+		return false
+	}
+	requestedNormalized, err := types.NormalizeQueueLongContextTiers(requested)
+	if err != nil || len(requestedNormalized) == 0 {
+		return false
+	}
+	heldByThreshold := make(map[int]struct{}, len(heldNormalized))
+	for _, tier := range heldNormalized {
+		heldByThreshold[tier.ThresholdTokens] = struct{}{}
+	}
+	for _, tier := range requestedNormalized {
+		if _, ok := heldByThreshold[tier.ThresholdTokens]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func hasLongContextTierActivity(tiers []types.QueueLongContextTierStatus) bool {
 	for _, tier := range tiers {
 		if tier.Running > 0 || tier.Queued > 0 {
@@ -826,8 +1057,10 @@ func emptyLongContextTierStatus(tiers []types.QueueLongContextTier) []types.Queu
 	status := make([]types.QueueLongContextTierStatus, 0, len(tiers))
 	for _, tier := range tiers {
 		status = append(status, types.QueueLongContextTierStatus{
-			ThresholdTokens: tier.ThresholdTokens,
-			MaxRunning:      tier.MaxRunning,
+			ThresholdTokens:         tier.ThresholdTokens,
+			MaxRunning:              tier.MaxRunning,
+			LeaseTurns:              tier.LeaseTurns,
+			LeaseIdleTimeoutSeconds: tier.LeaseIdleTimeoutSeconds,
 		})
 	}
 	return status

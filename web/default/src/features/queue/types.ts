@@ -9,6 +9,8 @@ export type QueueBuckets = Record<string, number>
 export type QueueLongContextTier = {
   threshold_tokens: number
   max_running: number
+  lease_turns: number
+  lease_idle_timeout_seconds: number
 }
 
 export type QueueLongContextTierStatus = QueueLongContextTier & {

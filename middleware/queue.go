@@ -54,6 +54,40 @@ func QueueMiddleware() func(c *gin.Context) {
 		longContextTiers, _ := common.GetContextKeyType[[]types.QueueLongContextTier](c, constant.ContextKeyQueueLongContextTiers)
 
 		var notifier service.PositionNotifier
+		canProceed := func() (bool, error) {
+			if !setting.ModelRequestRateLimitEnabled {
+				return true, nil
+			}
+			config := buildModelRateLimitConfigFromValues(userID, tokenGroup, userGroup, modelName)
+			allowed, _, err := tryAcquireModelRateLimit(config)
+			return allowed, err
+		}
+
+		if leaseID := strings.TrimSpace(c.GetHeader(service.QueueLeaseIDHeader)); leaseID != "" {
+			leaseUse, ok := queueService.TryBeginLongContextLeaseUse(leaseID, service.LongContextLeaseUseOptions{
+				ModelName:        modelName,
+				TokenID:          tokenID,
+				CompanyID:        companyID,
+				LongContextTiers: longContextTiers,
+			})
+			if ok {
+				allowed, err := canProceed()
+				if err != nil {
+					queueService.CancelLongContextLeaseUse(leaseID)
+					abortWithOpenAiMessage(c, http.StatusInternalServerError, "queue_lease_rate_limit_check_failed")
+					return
+				}
+				if allowed {
+					writeQueueLeaseHeaders(c, leaseUse)
+					defer func() {
+						queueService.FinishLongContextLeaseUse(leaseID)
+					}()
+					c.Next()
+					return
+				}
+				queueService.CancelLongContextLeaseUse(leaseID)
+			}
+		}
 
 		queuedRequest, position, _, err := queueService.Enqueue(service.QueueEnqueueOptions{
 			RequestContext:        c.Request.Context(),
@@ -65,15 +99,8 @@ func QueueMiddleware() func(c *gin.Context) {
 			TokenTimeoutSeconds:   tokenTimeout,
 			EstimatedPromptTokens: estimatedPromptTokens,
 			LongContextTiers:      longContextTiers,
-			CanProceed: func() (bool, error) {
-				if !setting.ModelRequestRateLimitEnabled {
-					return true, nil
-				}
-				config := buildModelRateLimitConfigFromValues(userID, tokenGroup, userGroup, modelName)
-				allowed, _, err := tryAcquireModelRateLimit(config)
-				return allowed, err
-			},
-			PositionNotifier: notifier,
+			CanProceed:            canProceed,
+			PositionNotifier:      notifier,
 		})
 		if err != nil {
 			var queueFullErr *service.QueueFullError
@@ -97,10 +124,18 @@ func QueueMiddleware() func(c *gin.Context) {
 			}
 			common.SetContextKey(c, constant.ContextKeyQueueWaitMs, queueWaitMs)
 			queuedRequest.StopWaiting()
-			defer func() {
-				queueService.ReleaseLongContextSlots(queuedRequest)
-				queueService.NotifySchedulingRetry(modelName)
-			}()
+			leaseUse := queueService.StartLongContextLease(queuedRequest)
+			if leaseUse != nil {
+				writeQueueLeaseHeaders(c, leaseUse)
+				defer func() {
+					queueService.FinishLongContextLeaseUse(leaseUse.ID)
+				}()
+			} else {
+				defer func() {
+					queueService.ReleaseLongContextSlots(queuedRequest)
+					queueService.NotifySchedulingRetry(modelName)
+				}()
+			}
 			c.Next()
 			return
 		case <-queuedRequest.Context().Done():
@@ -124,6 +159,15 @@ func QueueMiddleware() func(c *gin.Context) {
 			return
 		}
 	}
+}
+
+func writeQueueLeaseHeaders(c *gin.Context, leaseUse *service.LongContextLeaseUse) {
+	if c == nil || leaseUse == nil || leaseUse.ID == "" {
+		return
+	}
+	c.Header(service.QueueLeaseIDHeader, leaseUse.ID)
+	c.Header(service.QueueLeaseRemainingHeader, strconv.Itoa(leaseUse.RemainingTurns))
+	c.Header(service.QueueLeaseIdleTimeoutSecondsHeader, strconv.Itoa(leaseUse.IdleTimeoutSeconds))
 }
 
 func loadQueueTokenSettings(tokenID int) (priority int, timeout int) {

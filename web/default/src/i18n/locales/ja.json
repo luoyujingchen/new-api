@@ -4689,6 +4689,8 @@
     "Shows whether queueing is currently enabled for this model. It is not an execution health indicator.": "このモデルで現在キューイングが有効かどうかを示します。実行状態の健全性指標ではありません。",
     "The monitor refreshes automatically every 5 seconds. Hover or tap the help icons for metric definitions, or click a model name for live details.": "モニターは 5 秒ごとに自動更新されます。各列見出しのヘルプアイコンにホバーまたはタップすると指標の説明を確認でき、モデル名をクリックするとリアルタイム詳細を開けます。",
     "Zoom": "ズーム",
+    "Idle release seconds": "アイドル解放秒数",
+    "Lease turns": "保持ターン数",
     "Long context": "長文コンテキスト",
     "Long context controls": "長文コンテキスト制御",
     "Long context tiers": "長文コンテキスト階層",
@@ -4708,6 +4710,7 @@
     "Running slots and queued requests for configured long-context thresholds.": "設定済みの長文コンテキストしきい値に対する実行スロットとキュー中リクエスト。",
     "Threshold tokens": "しきい値トークン",
     "queued": "キュー中",
-    "running": "実行中"
+    "running": "実行中",
+    "turns": "ターン"
   }
 }

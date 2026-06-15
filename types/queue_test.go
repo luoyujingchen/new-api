@@ -13,8 +13,8 @@ func TestNormalizeQueueLongContextTiers(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, []QueueLongContextTier{
-		{ThresholdTokens: 64000, MaxRunning: 4},
-		{ThresholdTokens: 96000, MaxRunning: 1},
+		{ThresholdTokens: 64000, MaxRunning: 4, LeaseTurns: DefaultQueueLongContextLeaseTurns, LeaseIdleTimeoutSeconds: DefaultQueueLongContextLeaseIdleTimeoutSeconds},
+		{ThresholdTokens: 96000, MaxRunning: 1, LeaseTurns: DefaultQueueLongContextLeaseTurns, LeaseIdleTimeoutSeconds: DefaultQueueLongContextLeaseIdleTimeoutSeconds},
 	}, normalized)
 
 	_, err = NormalizeQueueLongContextTiers([]QueueLongContextTier{
@@ -30,6 +30,16 @@ func TestNormalizeQueueLongContextTiers(t *testing.T) {
 
 	_, err = NormalizeQueueLongContextTiers([]QueueLongContextTier{
 		{ThresholdTokens: 64000, MaxRunning: 0},
+	})
+	require.Error(t, err)
+
+	_, err = NormalizeQueueLongContextTiers([]QueueLongContextTier{
+		{ThresholdTokens: 64000, MaxRunning: 1, LeaseTurns: -1},
+	})
+	require.Error(t, err)
+
+	_, err = NormalizeQueueLongContextTiers([]QueueLongContextTier{
+		{ThresholdTokens: 64000, MaxRunning: 1, LeaseIdleTimeoutSeconds: -1},
 	})
 	require.Error(t, err)
 
