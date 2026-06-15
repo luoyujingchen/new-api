@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -90,6 +91,11 @@ func QueueMiddleware() func(c *gin.Context) {
 
 		select {
 		case <-queuedRequest.Ready:
+			queueWaitMs := time.Since(queuedRequest.EnqueuedAt).Milliseconds()
+			if queueWaitMs < 0 {
+				queueWaitMs = 0
+			}
+			common.SetContextKey(c, constant.ContextKeyQueueWaitMs, queueWaitMs)
 			queuedRequest.StopWaiting()
 			defer func() {
 				queueService.ReleaseLongContextSlots(queuedRequest)

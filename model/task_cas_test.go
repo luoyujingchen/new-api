@@ -2,12 +2,15 @@ package model
 
 import (
 	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,6 +76,28 @@ func insertTask(t *testing.T, task *Task) {
 	task.CreatedAt = time.Now().Unix()
 	task.UpdatedAt = time.Now().Unix()
 	require.NoError(t, DB.Create(task).Error)
+}
+
+func TestAppendQueueWaitInfo(t *testing.T) {
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	common.SetContextKey(ctx, constant.ContextKeyQueueWaitMs, int64(1234))
+
+	other := appendQueueWaitInfo(ctx, map[string]interface{}{"existing": "value"})
+
+	require.Equal(t, "value", other["existing"])
+	require.Equal(t, int64(1234), other["queue_wait_ms"])
+}
+
+func TestAppendQueueWaitInfoAbsent(t *testing.T) {
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	other := map[string]interface{}{"existing": "value"}
+	result := appendQueueWaitInfo(ctx, other)
+
+	require.Equal(t, other, result)
+	require.Equal(t, "value", result["existing"])
+	_, exists := result["queue_wait_ms"]
+	require.False(t, exists)
 }
 
 // ---------------------------------------------------------------------------

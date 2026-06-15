@@ -162,6 +162,7 @@ export interface LogOtherData {
   po?: string[]
   billing_source?: string
   group?: string
+  queue_wait_ms?: number | string
   stream_status?: {
     status?: string
     end_reason?: string

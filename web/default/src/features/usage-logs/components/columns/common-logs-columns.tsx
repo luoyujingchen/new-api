@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
-import { CircleAlert, Sparkles, KeyRound } from 'lucide-react'
+import { CircleAlert, Sparkles, KeyRound, Timer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
@@ -87,6 +87,16 @@ function getGroupRatioText(other: LogOtherData | null): string | null {
   }
 
   return null
+}
+
+function getQueueWaitMs(other: LogOtherData | null): number | null {
+  const raw = other?.queue_wait_ms
+  if (raw == null) return null
+
+  const waitMs = Number(raw)
+  if (!Number.isFinite(waitMs) || waitMs < 0) return null
+
+  return waitMs
 }
 
 function buildDetailSegments(
@@ -658,6 +668,37 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         )
       },
       meta: { label: t('Timing'), mobileHidden: true },
+    },
+
+    {
+      id: 'queue_wait',
+      accessorFn: (log) => {
+        if (!isTimingLogType(log.type)) return null
+        return getQueueWaitMs(parseLogOther(log.other))
+      },
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Queue')} />
+      ),
+      cell: ({ row }) => {
+        const queueWaitMs = row.getValue<number | null>('queue_wait')
+
+        if (queueWaitMs == null) {
+          return (
+            <span className='text-muted-foreground/60 text-xs'>
+              {t('Not queued')}
+            </span>
+          )
+        }
+
+        return (
+          <span className='border-border/60 bg-muted/40 inline-flex w-fit items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-xs font-medium tabular-nums'>
+            <Timer className='text-muted-foreground size-3' />
+            {formatUseTime(queueWaitMs / 1000)}
+          </span>
+        )
+      },
+      meta: { label: t('Queue'), mobileHidden: true },
+      size: 110,
     },
 
     {

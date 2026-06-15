@@ -57,6 +57,7 @@ const (
 	ContextKeyUserName              ContextKey = "username"
 	ContextKeyQueueRequired         ContextKey = "queue_required"
 	ContextKeyQueueModelName        ContextKey = "queue_model_name"
+	ContextKeyQueueWaitMs           ContextKey = "queue_wait_ms"
 	ContextKeyQueueLongContextTiers ContextKey = "queue_long_context_tiers"
 
 	ContextKeyLocalCountTokens ContextKey = "local_count_tokens"
