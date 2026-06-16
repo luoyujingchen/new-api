@@ -15,15 +15,17 @@ import (
 
 // UserBase struct remains the same as it represents the cached data structure
 type UserBase struct {
-	Id       int    `json:"id"`
-	Group    string `json:"group"`
-	Email    string `json:"email"`
-	Quota    int    `json:"quota"`
-	Status   int    `json:"status"`
-	Username string `json:"username"`
-	Setting  string `json:"setting"`
-	CompanyId int64 `json:"company_id"`
-	CompanyLoaded bool `json:"company_loaded"`
+	Id               int    `json:"id"`
+	Group            string `json:"group"`
+	Email            string `json:"email"`
+	Quota            int    `json:"quota"`
+	Status           int    `json:"status"`
+	Username         string `json:"username"`
+	Setting          string `json:"setting"`
+	CompanyId        int64  `json:"company_id"`
+	CompanyLoaded    bool   `json:"company_loaded"`
+	DepartmentId     int64  `json:"department_id"`
+	DepartmentLoaded bool   `json:"department_loaded"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -35,6 +37,9 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
 	if user.CompanyLoaded && user.CompanyId > 0 {
 		common.SetContextKey(c, constant.ContextKeyUserCompanyId, user.CompanyId)
+	}
+	if user.DepartmentLoaded && user.DepartmentId > 0 {
+		common.SetContextKey(c, constant.ContextKeyUserDepartmentId, user.DepartmentId)
 	}
 }
 
@@ -98,7 +103,7 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 
 	// Try getting from Redis first
 	userCache, err = cacheGetUserBase(userId)
-	if err == nil && userCache.CompanyLoaded {
+	if err == nil && userCache.CompanyLoaded && userCache.DepartmentLoaded {
 		return userCache, nil
 	}
 
@@ -111,17 +116,21 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 
 	// Create cache object from user data
 	userCache = &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
-		CompanyLoaded: true,
+		Id:               user.Id,
+		Group:            user.Group,
+		Quota:            user.Quota,
+		Status:           user.Status,
+		Username:         user.Username,
+		Setting:          user.Setting,
+		Email:            user.Email,
+		CompanyLoaded:    true,
+		DepartmentLoaded: true,
 	}
 	if user.CompanyId != nil {
 		userCache.CompanyId = *user.CompanyId
+	}
+	if user.DepartmentId != nil {
+		userCache.DepartmentId = *user.DepartmentId
 	}
 
 	return userCache, nil

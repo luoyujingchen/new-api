@@ -57,6 +57,9 @@ export type QueueLongContextTask = {
   model_name: string
   token_id: number
   company_id: number
+  department_id?: number
+  company_name?: string
+  department_name?: string
   threshold_tokens: number
   estimated_prompt_tokens: number
   priority: number

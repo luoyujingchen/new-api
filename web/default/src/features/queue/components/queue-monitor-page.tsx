@@ -1,6 +1,11 @@
-import { useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { RefreshCw, Trash2 } from 'lucide-react'
+import { Fragment, useMemo, useState } from 'react'
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import { ChevronDown, ChevronRight, RefreshCw, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -74,6 +79,13 @@ function formatDuration(
   return `${remainingSeconds}${units.s}`
 }
 
+function formatOrgName(name: string | undefined, id: number | undefined) {
+  const trimmed = name?.trim()
+  if (trimmed) return trimmed
+  if (id && id > 0) return `#${id}`
+  return ''
+}
+
 function hasLongContextActivity(
   tiers: QueueModelSnapshot['long_context_tiers']
 ) {
@@ -110,6 +122,7 @@ export function QueueMonitorPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  const [expandedModels, setExpandedModels] = useState<Set<string>>(new Set())
 
   const queueStatusQuery = useQuery({
     queryKey: ['queue-status'],
@@ -124,10 +137,36 @@ export function QueueMonitorPage() {
     refetchInterval: selectedModel ? 5000 : false,
   })
 
-  const longContextTasksQuery = useQuery({
-    queryKey: ['queue-long-context-tasks'],
-    queryFn: () => getQueueLongContextTasks(),
-    refetchInterval: 5000,
+  const expandedModelNames = useMemo(
+    () => Array.from(expandedModels).sort(),
+    [expandedModels]
+  )
+
+  const longContextTaskQueries = useQueries({
+    queries: expandedModelNames.map((modelName) => ({
+      queryKey: ['queue-long-context-tasks', modelName],
+      queryFn: () => getQueueLongContextTasks(modelName),
+      refetchInterval: 5000,
+    })),
+  })
+
+  const longContextTasksByModel = new Map<
+    string,
+    {
+      isLoading: boolean
+      isFetching: boolean
+      isError: boolean
+      tasks: QueueLongContextTask[]
+    }
+  >()
+  expandedModelNames.forEach((modelName, index) => {
+    const query = longContextTaskQueries[index]
+    longContextTasksByModel.set(modelName, {
+      isLoading: query?.isLoading ?? false,
+      isFetching: query?.isFetching ?? false,
+      isError: query?.isError ?? false,
+      tasks: query?.data?.items || [],
+    })
   })
 
   const cancelTaskMutation = useMutation({
@@ -137,7 +176,9 @@ export function QueueMonitorPage() {
       if (result.success) {
         toast.success(t('Long-context task cancelled'))
         queryClient.invalidateQueries({ queryKey: ['queue-status'] })
-        queryClient.invalidateQueries({ queryKey: ['queue-long-context-tasks'] })
+        queryClient.invalidateQueries({
+          queryKey: ['queue-long-context-tasks'],
+        })
       } else {
         toast.error(result.message || t('Operation failed'))
       }
@@ -155,6 +196,18 @@ export function QueueMonitorPage() {
       return
     }
     cancelTaskMutation.mutate(task)
+  }
+
+  const toggleModelExpansion = (modelName: string) => {
+    setExpandedModels((current) => {
+      const next = new Set(current)
+      if (next.has(modelName)) {
+        next.delete(modelName)
+      } else {
+        next.add(modelName)
+      }
+      return next
+    })
   }
 
   const getTaskStatusLabel = (status: string) => {
@@ -186,7 +239,6 @@ export function QueueMonitorPage() {
   }, [queueStatusQuery.data])
 
   const queuedModels = rows.filter((row) => row.queued > 0).length
-  const longContextTasks = longContextTasksQuery.data?.items || []
   const durationUnits = { h: t('h'), m: t('m'), s: t('s') }
   const columnHelp = {
     throughput: t(
@@ -268,6 +320,7 @@ export function QueueMonitorPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className='w-12'>{t('Details')}</TableHead>
                   <TableHead>{t('Model')}</TableHead>
                   <TableHead>{t('Status')}</TableHead>
                   <TableHead>{t('Queued')}</TableHead>
@@ -296,182 +349,305 @@ export function QueueMonitorPage() {
               </TableHeader>
               <TableBody>
                 {rows.length > 0 ? (
-                  rows.map((row) => (
-                    <TableRow key={row.model_name}>
-                      <TableCell>
-                        <button
-                          type='button'
-                          className='text-foreground hover:text-primary text-left font-medium transition-colors hover:underline'
-                          onClick={() => setSelectedModel(row.model_name)}
-                          title={t('Click to view full details')}
-                        >
-                          {row.model_name}
-                        </button>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant='secondary'>
-                          {row.enabled ? t('Enabled') : t('Disabled')}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{row.queued}</TableCell>
-                      <TableCell>
-                        {formatWait(row.avg_wait_sec, t('seconds'))}
-                      </TableCell>
-                      <TableCell>
-                        {formatWait(row.max_wait_sec, t('seconds'))}
-                      </TableCell>
-                      <TableCell>{row.throughput_rpm}</TableCell>
-                      <TableCell>
-                        {row.max_queue_size === 0
-                          ? t('Unlimited')
-                          : row.max_queue_size}
-                      </TableCell>
-                      <TableCell>
-                        <div className='flex flex-wrap gap-1'>
-                          {formatBuckets(row.buckets)
-                            .filter(([, count]) => count > 0)
-                            .map(([priority, count]) => (
-                              <Badge key={priority} variant='outline'>
-                                {`P${priority}: ${count}`}
-                              </Badge>
-                            ))}
-                          {Object.values(row.buckets).every(
-                            (count) => count === 0
-                          ) && (
-                            <span className='text-muted-foreground text-sm'>
-                              {t('No queued requests')}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className='flex flex-wrap gap-1'>
-                          {row.long_context_tiers.length > 0 ? (
-                            row.long_context_tiers.map((tier) => (
-                              <Badge
-                                key={tier.threshold_tokens}
-                                variant='outline'
-                              >
-                                {`>=${tier.threshold_tokens}: ${tier.running}/${tier.max_running}`}
-                              </Badge>
-                            ))
-                          ) : (
-                            <span className='text-muted-foreground text-sm'>
-                              {t('Not configured')}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={9} className='h-24 text-center'>
-                      {t('No queue activity yet')}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                  rows.map((row) => {
+                    const isExpanded = expandedModels.has(row.model_name)
+                    const taskState = longContextTasksByModel.get(
+                      row.model_name
+                    )
+                    const tasks = taskState?.tasks || []
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('Long-context tasks')}</CardTitle>
-          <CardDescription>
-            {t('Queued requests and retained long-context slots.')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className='rounded-md border'>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('Status')}</TableHead>
-                  <TableHead>{t('Model')}</TableHead>
-                  <TableHead>{t('Threshold tokens')}</TableHead>
-                  <TableHead>{t('Token ID')}</TableHead>
-                  <TableHead>{t('Company ID')}</TableHead>
-                  <TableHead>{t('Prompt tokens')}</TableHead>
-                  <TableHead>{t('Priority')}</TableHead>
-                  <TableHead>{t('Created at')}</TableHead>
-                  <TableHead>{t('Wait duration')}</TableHead>
-                  <TableHead>{t('Remaining turns')}</TableHead>
-                  <TableHead>{t('Idle expires at')}</TableHead>
-                  <TableHead className='text-right'>{t('Actions')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {longContextTasks.length > 0 ? (
-                  longContextTasks.map((task) => (
-                    <TableRow key={`${task.kind}:${task.id}`}>
-                      <TableCell>
-                        <div className='flex flex-wrap gap-1'>
-                          <Badge
-                            variant={
-                              task.kind === 'queued' ? 'secondary' : 'outline'
-                            }
-                          >
-                            {task.kind === 'queued'
-                              ? t('Queued')
-                              : t('Retained')}
-                          </Badge>
-                          <Badge variant='outline'>
-                            {getTaskStatusLabel(task.status)}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell className='font-medium'>
-                        {task.model_name}
-                      </TableCell>
-                      <TableCell>{`>=${task.threshold_tokens}`}</TableCell>
-                      <TableCell>{task.token_id || '-'}</TableCell>
-                      <TableCell>{task.company_id || '-'}</TableCell>
-                      <TableCell>{task.estimated_prompt_tokens}</TableCell>
-                      <TableCell>{`P${task.priority}`}</TableCell>
-                      <TableCell>{formatTimestamp(task.created_at)}</TableCell>
-                      <TableCell>
-                        {task.kind === 'queued'
-                          ? formatDuration(task.wait_seconds, durationUnits)
-                          : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {task.kind === 'leased'
-                          ? `${task.remaining_turns}/${task.lease_turns}`
-                          : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {task.kind === 'leased'
-                          ? formatTimestamp(task.idle_expires_at || 0)
-                          : '-'}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {task.kind === 'queued' ? (
-                          <Button
-                            variant='destructive'
-                            size='sm'
-                            onClick={() => handleCancelTask(task)}
-                            disabled={cancelTaskMutation.isPending}
-                          >
-                            <Trash2 className='mr-2 h-4 w-4' />
-                            {t('Cancel request')}
-                          </Button>
-                        ) : (
-                          <span className='text-muted-foreground text-sm'>
-                            {t('Auto release')}
-                          </span>
+                    return (
+                      <Fragment key={row.model_name}>
+                        <TableRow>
+                          <TableCell>
+                            <Button
+                              type='button'
+                              variant='ghost'
+                              size='icon'
+                              className='size-8'
+                              onClick={() =>
+                                toggleModelExpansion(row.model_name)
+                              }
+                              title={
+                                isExpanded
+                                  ? t('Hide long-context tasks')
+                                  : t('Show long-context tasks')
+                              }
+                              aria-label={
+                                isExpanded
+                                  ? t('Hide long-context tasks')
+                                  : t('Show long-context tasks')
+                              }
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className='size-4' />
+                              ) : (
+                                <ChevronRight className='size-4' />
+                              )}
+                            </Button>
+                          </TableCell>
+                          <TableCell>
+                            <button
+                              type='button'
+                              className='text-foreground hover:text-primary text-left font-medium transition-colors hover:underline'
+                              onClick={() => setSelectedModel(row.model_name)}
+                              title={t('Click to view full details')}
+                            >
+                              {row.model_name}
+                            </button>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant='secondary'>
+                              {row.enabled ? t('Enabled') : t('Disabled')}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{row.queued}</TableCell>
+                          <TableCell>
+                            {formatWait(row.avg_wait_sec, t('seconds'))}
+                          </TableCell>
+                          <TableCell>
+                            {formatWait(row.max_wait_sec, t('seconds'))}
+                          </TableCell>
+                          <TableCell>{row.throughput_rpm}</TableCell>
+                          <TableCell>
+                            {row.max_queue_size === 0
+                              ? t('Unlimited')
+                              : row.max_queue_size}
+                          </TableCell>
+                          <TableCell>
+                            <div className='flex flex-wrap gap-1'>
+                              {formatBuckets(row.buckets)
+                                .filter(([, count]) => count > 0)
+                                .map(([priority, count]) => (
+                                  <Badge key={priority} variant='outline'>
+                                    {`P${priority}: ${count}`}
+                                  </Badge>
+                                ))}
+                              {Object.values(row.buckets).every(
+                                (count) => count === 0
+                              ) && (
+                                <span className='text-muted-foreground text-sm'>
+                                  {t('No queued requests')}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className='flex flex-wrap gap-1'>
+                              {row.long_context_tiers.length > 0 ? (
+                                row.long_context_tiers.map((tier) => (
+                                  <Badge
+                                    key={tier.threshold_tokens}
+                                    variant='outline'
+                                  >
+                                    {`>=${tier.threshold_tokens}: ${tier.running}/${tier.max_running}`}
+                                  </Badge>
+                                ))
+                              ) : (
+                                <span className='text-muted-foreground text-sm'>
+                                  {t('Not configured')}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        {isExpanded && (
+                          <TableRow>
+                            <TableCell colSpan={10} className='bg-muted/20 p-0'>
+                              <div className='space-y-3 p-4'>
+                                <div className='flex flex-wrap items-center justify-between gap-2'>
+                                  <div>
+                                    <p className='text-sm font-medium'>
+                                      {t('Long-context tasks for {{model}}', {
+                                        model: row.model_name,
+                                      })}
+                                    </p>
+                                    <p className='text-muted-foreground text-xs'>
+                                      {t(
+                                        'Queued requests and retained long-context slots for this model queue.'
+                                      )}
+                                    </p>
+                                  </div>
+                                  {taskState?.isFetching && (
+                                    <Badge variant='outline'>
+                                      {t('Refreshing')}
+                                    </Badge>
+                                  )}
+                                </div>
+
+                                {taskState?.isLoading ? (
+                                  <div className='text-muted-foreground rounded-md border border-dashed p-4 text-sm'>
+                                    {t('Loading...')}
+                                  </div>
+                                ) : taskState?.isError ? (
+                                  <div className='text-muted-foreground rounded-md border border-dashed p-4 text-sm'>
+                                    {t('Failed to load long-context tasks')}
+                                  </div>
+                                ) : tasks.length > 0 ? (
+                                  <div className='bg-background overflow-x-auto rounded-md border'>
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          <TableHead>{t('Status')}</TableHead>
+                                          <TableHead>{t('Task ID')}</TableHead>
+                                          <TableHead>
+                                            {t('Threshold tokens')}
+                                          </TableHead>
+                                          <TableHead>
+                                            {t('Prompt tokens')}
+                                          </TableHead>
+                                          <TableHead>{t('Token ID')}</TableHead>
+                                          <TableHead>
+                                            {t('Company / Department')}
+                                          </TableHead>
+                                          <TableHead>{t('Priority')}</TableHead>
+                                          <TableHead>
+                                            {t('Created at')}
+                                          </TableHead>
+                                          <TableHead>{t('Duration')}</TableHead>
+                                          <TableHead>
+                                            {t('Remaining turns')}
+                                          </TableHead>
+                                          <TableHead>
+                                            {t('Idle release seconds')}
+                                          </TableHead>
+                                          <TableHead>
+                                            {t('Idle expires at')}
+                                          </TableHead>
+                                          <TableHead className='text-right'>
+                                            {t('Actions')}
+                                          </TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {tasks.map((task) => {
+                                          const companyName = formatOrgName(
+                                            task.company_name,
+                                            task.company_id
+                                          )
+                                          const departmentName = formatOrgName(
+                                            task.department_name,
+                                            task.department_id
+                                          )
+
+                                          return (
+                                            <TableRow
+                                              key={`${task.kind}:${task.id}`}
+                                            >
+                                              <TableCell>
+                                                <div className='flex flex-wrap gap-1'>
+                                                  <Badge
+                                                    variant={
+                                                      task.kind === 'queued'
+                                                        ? 'secondary'
+                                                        : 'outline'
+                                                    }
+                                                  >
+                                                    {task.kind === 'queued'
+                                                      ? t('Queued')
+                                                      : t('Retained')}
+                                                  </Badge>
+                                                  <Badge variant='outline'>
+                                                    {getTaskStatusLabel(
+                                                      task.status
+                                                    )}
+                                                  </Badge>
+                                                </div>
+                                              </TableCell>
+                                              <TableCell className='max-w-[180px] truncate font-mono text-xs'>
+                                                {task.id}
+                                              </TableCell>
+                                              <TableCell>{`>=${task.threshold_tokens}`}</TableCell>
+                                              <TableCell>
+                                                {task.estimated_prompt_tokens}
+                                              </TableCell>
+                                              <TableCell>
+                                                {task.token_id || '-'}
+                                              </TableCell>
+                                              <TableCell>
+                                                <div className='min-w-36 space-y-1 text-sm'>
+                                                  <div>
+                                                    {companyName ||
+                                                      t('No company')}
+                                                  </div>
+                                                  <div className='text-muted-foreground text-xs'>
+                                                    {departmentName ||
+                                                      t('No department')}
+                                                  </div>
+                                                </div>
+                                              </TableCell>
+                                              <TableCell>{`P${task.priority}`}</TableCell>
+                                              <TableCell>
+                                                {formatTimestamp(
+                                                  task.created_at
+                                                )}
+                                              </TableCell>
+                                              <TableCell>
+                                                {formatDuration(
+                                                  task.wait_seconds,
+                                                  durationUnits
+                                                )}
+                                              </TableCell>
+                                              <TableCell>
+                                                {task.kind === 'leased'
+                                                  ? `${task.remaining_turns}/${task.lease_turns}`
+                                                  : '-'}
+                                              </TableCell>
+                                              <TableCell>
+                                                {task.kind === 'leased'
+                                                  ? task.idle_timeout_seconds
+                                                  : '-'}
+                                              </TableCell>
+                                              <TableCell>
+                                                {task.kind === 'leased'
+                                                  ? formatTimestamp(
+                                                      task.idle_expires_at || 0
+                                                    )
+                                                  : '-'}
+                                              </TableCell>
+                                              <TableCell className='text-right'>
+                                                {task.kind === 'queued' ? (
+                                                  <Button
+                                                    variant='destructive'
+                                                    size='sm'
+                                                    onClick={() =>
+                                                      handleCancelTask(task)
+                                                    }
+                                                    disabled={
+                                                      cancelTaskMutation.isPending
+                                                    }
+                                                  >
+                                                    <Trash2 className='mr-2 h-4 w-4' />
+                                                    {t('Cancel request')}
+                                                  </Button>
+                                                ) : (
+                                                  <span className='text-muted-foreground text-sm'>
+                                                    {t('Auto release')}
+                                                  </span>
+                                                )}
+                                              </TableCell>
+                                            </TableRow>
+                                          )
+                                        })}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
+                                ) : (
+                                  <div className='text-muted-foreground rounded-md border border-dashed p-4 text-sm'>
+                                    {t('No long-context tasks for this model')}
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
                         )}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                      </Fragment>
+                    )
+                  })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={12} className='h-24 text-center'>
-                      {longContextTasksQuery.isLoading
-                        ? t('Loading...')
-                        : t('No long-context tasks')}
+                    <TableCell colSpan={10} className='h-24 text-center'>
+                      {t('No queue activity yet')}
                     </TableCell>
                   </TableRow>
                 )}

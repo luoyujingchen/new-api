@@ -41,9 +41,9 @@ type User struct {
 	UsedQuota        int            `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int            `json:"request_count" gorm:"type:int;default:0;"`               // request number
 	Group            string         `json:"group" gorm:"type:varchar(64);default:'default'"`
-	CompanyId        *int64         `json:"company_id,omitempty" gorm:"column:company_id;index"`         // 所属公司ID（可选）
-	DepartmentId     *int64         `json:"department_id,omitempty" gorm:"column:department_id;index"`  // 所属部门ID（可选）
-	Company          *Company       `json:"company,omitempty" gorm:"foreignKey:CompanyId"`              // 所属公司
+	CompanyId        *int64         `json:"company_id,omitempty" gorm:"column:company_id;index"`       // 所属公司ID（可选）
+	DepartmentId     *int64         `json:"department_id,omitempty" gorm:"column:department_id;index"` // 所属部门ID（可选）
+	Company          *Company       `json:"company,omitempty" gorm:"foreignKey:CompanyId"`             // 所属公司
 	Department       *Department    `json:"department,omitempty" gorm:"foreignKey:DepartmentId"`       // 所属部门
 	AffCode          string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount         int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
@@ -61,17 +61,21 @@ type User struct {
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
-		CompanyLoaded: true,
+		Id:               user.Id,
+		Group:            user.Group,
+		Quota:            user.Quota,
+		Status:           user.Status,
+		Username:         user.Username,
+		Setting:          user.Setting,
+		Email:            user.Email,
+		CompanyLoaded:    true,
+		DepartmentLoaded: true,
 	}
 	if user.CompanyId != nil {
 		cache.CompanyId = *user.CompanyId
+	}
+	if user.DepartmentId != nil {
+		cache.DepartmentId = *user.DepartmentId
 	}
 	return cache
 }

@@ -30,6 +30,7 @@ type QueueEnqueueOptions struct {
 	ModelName             string
 	TokenID               int
 	CompanyID             int64
+	DepartmentID          int64
 	Priority              int
 	HeaderTimeoutSeconds  *int
 	TokenTimeoutSeconds   int
@@ -100,6 +101,9 @@ type LongContextTaskSnapshot struct {
 	ModelName             string `json:"model_name"`
 	TokenID               int    `json:"token_id"`
 	CompanyID             int64  `json:"company_id"`
+	DepartmentID          int64  `json:"department_id,omitempty"`
+	CompanyName           string `json:"company_name,omitempty"`
+	DepartmentName        string `json:"department_name,omitempty"`
 	ThresholdTokens       int    `json:"threshold_tokens"`
 	EstimatedPromptTokens int    `json:"estimated_prompt_tokens"`
 	Priority              int    `json:"priority"`
@@ -149,9 +153,10 @@ func (l *LongContextLeaseUse) matches(options LongContextLeaseUseOptions) bool {
 }
 
 type QueuedRequest struct {
-	ID        string
-	TokenID   int
-	CompanyID int64
+	ID           string
+	TokenID      int
+	CompanyID    int64
+	DepartmentID int64
 
 	ModelName             string
 	Priority              int
@@ -589,6 +594,7 @@ func (q *ModelQueue) LongContextQueuedSnapshots(tiers []types.QueueLongContextTi
 				ModelName:             req.ModelName,
 				TokenID:               req.TokenID,
 				CompanyID:             req.CompanyID,
+				DepartmentID:          req.DepartmentID,
 				ThresholdTokens:       tier.ThresholdTokens,
 				EstimatedPromptTokens: req.EstimatedPromptTokens,
 				Priority:              req.Priority,
@@ -767,6 +773,7 @@ func (s *RequestQueueService) Enqueue(options QueueEnqueueOptions) (*QueuedReque
 		ID:                    common.GetTimeString() + common.GetRandomString(8),
 		TokenID:               options.TokenID,
 		CompanyID:             options.CompanyID,
+		DepartmentID:          options.DepartmentID,
 		ModelName:             modelName,
 		Priority:              setting.NormalizeQueuePriority(options.Priority),
 		EstimatedPromptTokens: options.EstimatedPromptTokens,
@@ -1067,6 +1074,7 @@ func (s *RequestQueueService) GetLongContextTasksSnapshot(modelName string) Long
 			ModelName:             lease.holder.ModelName,
 			TokenID:               lease.holder.TokenID,
 			CompanyID:             lease.holder.CompanyID,
+			DepartmentID:          lease.holder.DepartmentID,
 			ThresholdTokens:       lease.ThresholdTokens,
 			EstimatedPromptTokens: lease.holder.EstimatedPromptTokens,
 			Priority:              lease.holder.Priority,
@@ -1092,9 +1100,73 @@ func (s *RequestQueueService) GetLongContextTasksSnapshot(modelName string) Long
 		return items[i].CreatedAt < items[j].CreatedAt
 	})
 
+	enrichLongContextTaskOrganizationNames(items)
+
 	return LongContextTasksSnapshot{
 		Items: items,
 		Total: len(items),
+	}
+}
+
+func enrichLongContextTaskOrganizationNames(items []LongContextTaskSnapshot) {
+	if len(items) == 0 || model.DB == nil {
+		return
+	}
+
+	companyIDSet := make(map[int64]struct{})
+	departmentIDSet := make(map[int64]struct{})
+	for _, item := range items {
+		if item.CompanyID > 0 {
+			companyIDSet[item.CompanyID] = struct{}{}
+		}
+		if item.DepartmentID > 0 {
+			departmentIDSet[item.DepartmentID] = struct{}{}
+		}
+	}
+
+	companyNames := make(map[int64]string, len(companyIDSet))
+	if len(companyIDSet) > 0 {
+		companyIDs := make([]int64, 0, len(companyIDSet))
+		for id := range companyIDSet {
+			companyIDs = append(companyIDs, id)
+		}
+
+		var companies []model.Company
+		if err := model.DB.Model(&model.Company{}).
+			Select("id", "name").
+			Where("id IN ?", companyIDs).
+			Find(&companies).Error; err != nil {
+			common.SysLog("failed to load queue task company names: " + err.Error())
+		} else {
+			for _, company := range companies {
+				companyNames[company.Id] = company.Name
+			}
+		}
+	}
+
+	departmentNames := make(map[int64]string, len(departmentIDSet))
+	if len(departmentIDSet) > 0 {
+		departmentIDs := make([]int64, 0, len(departmentIDSet))
+		for id := range departmentIDSet {
+			departmentIDs = append(departmentIDs, id)
+		}
+
+		var departments []model.Department
+		if err := model.DB.Model(&model.Department{}).
+			Select("id", "name").
+			Where("id IN ?", departmentIDs).
+			Find(&departments).Error; err != nil {
+			common.SysLog("failed to load queue task department names: " + err.Error())
+		} else {
+			for _, department := range departments {
+				departmentNames[department.Id] = department.Name
+			}
+		}
+	}
+
+	for index := range items {
+		items[index].CompanyName = companyNames[items[index].CompanyID]
+		items[index].DepartmentName = departmentNames[items[index].DepartmentID]
 	}
 }
 

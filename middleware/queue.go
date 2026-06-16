@@ -46,6 +46,7 @@ func QueueMiddleware() func(c *gin.Context) {
 		userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 
 		companyID, _ := common.GetContextKeyType[int64](c, constant.ContextKeyUserCompanyId)
+		departmentID, _ := common.GetContextKeyType[int64](c, constant.ContextKeyUserDepartmentId)
 		tokenPriority, tokenTimeout := loadQueueTokenSettings(tokenID)
 		companyPriority := loadQueueCompanyPriority(companyID)
 		headerTimeout := parseQueueTimeoutHeader(c)
@@ -92,6 +93,7 @@ func QueueMiddleware() func(c *gin.Context) {
 			ModelName:             modelName,
 			TokenID:               tokenID,
 			CompanyID:             companyID,
+			DepartmentID:          departmentID,
 			Priority:              service.CalculateQueuePriority(tokenPriority, companyPriority),
 			HeaderTimeoutSeconds:  headerTimeout,
 			TokenTimeoutSeconds:   tokenTimeout,

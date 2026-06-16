@@ -53,6 +53,7 @@ const (
 	ContextKeyUserEmail             ContextKey = "user_email"
 	ContextKeyUserGroup             ContextKey = "user_group"
 	ContextKeyUserCompanyId         ContextKey = "user_company_id"
+	ContextKeyUserDepartmentId      ContextKey = "user_department_id"
 	ContextKeyUsingGroup            ContextKey = "group"
 	ContextKeyUserName              ContextKey = "username"
 	ContextKeyQueueRequired         ContextKey = "queue_required"
