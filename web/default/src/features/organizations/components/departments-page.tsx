@@ -29,7 +29,7 @@ import { DepartmentsMutateDrawer } from './departments-mutate-drawer'
 import { DepartmentsDeleteDialog } from './departments-delete-dialog'
 import { OrganizationRateLimitDrawer } from './organization-rate-limit-drawer'
 import { DepartmentsProvider, useDepartments } from './departments-provider'
-import { getDepartments, getCompany } from '../api'
+import { getCompany } from '../api'
 import { type Department } from '../types'
 
 const route = getRouteApi('/_authenticated/organizations/departments')

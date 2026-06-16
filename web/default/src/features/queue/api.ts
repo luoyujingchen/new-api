@@ -3,6 +3,8 @@ import type {
   ApiResponse,
   QueueConfig,
   QueueConfigFormData,
+  QueueLongContextTaskKind,
+  QueueLongContextTasksSnapshot,
   QueueModelStatus,
   QueueStatusSnapshot,
 } from './types'
@@ -19,6 +21,31 @@ export async function getQueueModelStatus(
     `/api/queue/status/${encodeURIComponent(modelName)}`
   )
   return res.data.data
+}
+
+export async function getQueueLongContextTasks(
+  modelName?: string
+): Promise<QueueLongContextTasksSnapshot> {
+  const params = new URLSearchParams()
+  if (modelName) {
+    params.set('model_name', modelName)
+  }
+  const query = params.toString()
+  const res = await api.get<ApiResponse<QueueLongContextTasksSnapshot>>(
+    `/api/queue/long-context${query ? `?${query}` : ''}`
+  )
+  return res.data.data
+}
+
+export async function cancelQueueLongContextTask(
+  kind: QueueLongContextTaskKind,
+  id: string
+): Promise<ApiResponse<{ cancelled: boolean }>> {
+  const res = await api.post<ApiResponse<{ cancelled: boolean }>>(
+    '/api/queue/long-context/cancel',
+    { kind, id }
+  )
+  return res.data
 }
 
 export async function getQueueConfigs(): Promise<QueueConfig[]> {

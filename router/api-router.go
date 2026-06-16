@@ -141,9 +141,9 @@ func SetApiRouter(router *gin.Engine) {
 				// Admin 2FA routes
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
-					// User department assignment routes
-					adminRoute.PUT("/:id/department", controller.SetUserDepartment)
-					adminRoute.DELETE("/:id/department", controller.ClearUserDepartment)
+				// User department assignment routes
+				adminRoute.PUT("/:id/department", controller.SetUserDepartment)
+				adminRoute.DELETE("/:id/department", controller.ClearUserDepartment)
 			}
 		}
 
@@ -416,6 +416,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			queueRoute.GET("/status", controller.GetQueueStatus)
 			queueRoute.GET("/status/:model", controller.GetQueueModelStatus)
+			queueRoute.GET("/long-context", controller.GetQueueLongContextTasks)
+			queueRoute.POST("/long-context/cancel", controller.CancelQueueLongContextTask)
 			queueRoute.GET("/config", controller.GetQueueConfigs)
 			queueRoute.GET("/config/:model", controller.GetQueueConfig)
 			queueRoute.PUT("/config/:model", controller.UpsertQueueConfig)

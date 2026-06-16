@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Card,
   CardContent,
@@ -36,6 +37,7 @@ import type {
   QueueConfig,
   QueueConfigFormData,
   QueueLongContextTier,
+  QueueTimeSlotConfig,
 } from '../types'
 
 const DEFAULT_QUEUE_LEASE_TURNS = 20
@@ -47,6 +49,7 @@ const EMPTY_FORM: QueueConfigFormData = {
   max_queue_size: 0,
   queue_timeout: 0,
   long_context_tiers: [],
+  time_slots: [],
 }
 
 function normalizeTierValue(value: string): number {
@@ -63,6 +66,22 @@ function normalizeLongContextTierForForm(
     lease_idle_timeout_seconds:
       tier.lease_idle_timeout_seconds ||
       DEFAULT_QUEUE_LEASE_IDLE_TIMEOUT_SECONDS,
+  }
+}
+
+function normalizeTimeSlotForForm(
+  slot: Partial<QueueTimeSlotConfig>
+): QueueTimeSlotConfig {
+  return {
+    start_time: slot.start_time || '09:00',
+    end_time: slot.end_time || '18:00',
+    weekdays: slot.weekdays || [],
+    enabled: slot.enabled ?? true,
+    max_queue_size: slot.max_queue_size ?? 0,
+    queue_timeout: slot.queue_timeout ?? 0,
+    long_context_tiers: (slot.long_context_tiers || []).map(
+      normalizeLongContextTierForForm
+    ),
   }
 }
 
@@ -85,6 +104,7 @@ export function QueueConfigPage() {
         max_queue_size: data.max_queue_size,
         queue_timeout: data.queue_timeout,
         long_context_tiers: data.long_context_tiers || [],
+        time_slots: data.time_slots || [],
       })
     },
     onSuccess: () => {
@@ -119,8 +139,24 @@ export function QueueConfigPage() {
       longTierModels: configs.filter(
         (config) => (config.long_context_tiers || []).length > 0
       ).length,
+      timeSlotModels: configs.filter(
+        (config) => (config.time_slots || []).length > 0
+      ).length,
     }
   }, [queueConfigsQuery.data])
+
+  const weekdayOptions = useMemo(
+    () => [
+      { value: 1, label: t('Mon') },
+      { value: 2, label: t('Tue') },
+      { value: 3, label: t('Wed') },
+      { value: 4, label: t('Thu') },
+      { value: 5, label: t('Fri') },
+      { value: 6, label: t('Sat') },
+      { value: 0, label: t('Sun') },
+    ],
+    [t]
+  )
 
   const openCreate = () => {
     setEditingModel(null)
@@ -138,6 +174,7 @@ export function QueueConfigPage() {
       long_context_tiers: (config.long_context_tiers || []).map(
         normalizeLongContextTierForForm
       ),
+      time_slots: (config.time_slots || []).map(normalizeTimeSlotForForm),
     })
     setSheetOpen(true)
   }
@@ -173,14 +210,91 @@ export function QueueConfigPage() {
     }))
   }
 
-  const handleSave = async () => {
-    const modelName = formState.model_name.trim()
-    if (!modelName) {
-      toast.error(t('Model name is required'))
-      return
-    }
+  const updateTimeSlot = (
+    index: number,
+    patch: Partial<QueueConfigFormData['time_slots'][number]>
+  ) => {
+    setFormState((current) => ({
+      ...current,
+      time_slots: current.time_slots.map((slot, slotIndex) =>
+        slotIndex === index ? { ...slot, ...patch } : slot
+      ),
+    }))
+  }
 
-    const longContextTiers = [...formState.long_context_tiers].sort(
+  const removeTimeSlot = (index: number) => {
+    setFormState((current) => ({
+      ...current,
+      time_slots: current.time_slots.filter(
+        (_slot, slotIndex) => slotIndex !== index
+      ),
+    }))
+  }
+
+  const addTimeSlot = () => {
+    setFormState((current) => ({
+      ...current,
+      time_slots: [...current.time_slots, normalizeTimeSlotForForm({})],
+    }))
+  }
+
+  const updateTimeSlotTier = (
+    slotIndex: number,
+    tierIndex: number,
+    patch: Partial<QueueLongContextTier>
+  ) => {
+    setFormState((current) => ({
+      ...current,
+      time_slots: current.time_slots.map((slot, currentSlotIndex) => {
+        if (currentSlotIndex !== slotIndex) {
+          return slot
+        }
+        return {
+          ...slot,
+          long_context_tiers: slot.long_context_tiers.map(
+            (tier, currentTierIndex) =>
+              currentTierIndex === tierIndex ? { ...tier, ...patch } : tier
+          ),
+        }
+      }),
+    }))
+  }
+
+  const addTimeSlotTier = (slotIndex: number) => {
+    setFormState((current) => ({
+      ...current,
+      time_slots: current.time_slots.map((slot, currentSlotIndex) =>
+        currentSlotIndex === slotIndex
+          ? {
+              ...slot,
+              long_context_tiers: [
+                ...slot.long_context_tiers,
+                normalizeLongContextTierForForm({}),
+              ],
+            }
+          : slot
+      ),
+    }))
+  }
+
+  const removeTimeSlotTier = (slotIndex: number, tierIndex: number) => {
+    setFormState((current) => ({
+      ...current,
+      time_slots: current.time_slots.map((slot, currentSlotIndex) =>
+        currentSlotIndex === slotIndex
+          ? {
+              ...slot,
+              long_context_tiers: slot.long_context_tiers.filter(
+                (_tier, currentTierIndex) => currentTierIndex !== tierIndex
+              ),
+            }
+          : slot
+      ),
+    }))
+  }
+
+  const validateLongContextTiers = (tiers: QueueLongContextTier[]) => {
+    const longContextTiers = [...tiers].sort(
       (left, right) => left.threshold_tokens - right.threshold_tokens
     )
     if (
@@ -192,15 +306,13 @@ export function QueueConfigPage() {
           tier.lease_idle_timeout_seconds <= 0
       )
     ) {
-      toast.error(t('Long task tier values must be greater than 0'))
-      return
+      return t('Long task tier values must be greater than 0')
     }
     const thresholds = new Set(
       longContextTiers.map((tier) => tier.threshold_tokens)
     )
     if (thresholds.size !== longContextTiers.length) {
-      toast.error(t('Long task thresholds must be unique'))
-      return
+      return t('Long task thresholds must be unique')
     }
     const hasHigherTierOverLimit = longContextTiers.some((tier, index) => {
       return (
@@ -208,10 +320,46 @@ export function QueueConfigPage() {
       )
     })
     if (hasHigherTierOverLimit) {
-      toast.error(
-        t('Long task higher tier max running cannot exceed lower tier')
-      )
+      return t('Long task higher tier max running cannot exceed lower tier')
+    }
+    return null
+  }
+
+  const handleSave = async () => {
+    const modelName = formState.model_name.trim()
+    if (!modelName) {
+      toast.error(t('Model name is required'))
       return
+    }
+
+    const longContextTiers = [...formState.long_context_tiers].sort(
+      (left, right) => left.threshold_tokens - right.threshold_tokens
+    )
+    const longContextError = validateLongContextTiers(longContextTiers)
+    if (longContextError) {
+      toast.error(longContextError)
+      return
+    }
+    const timeSlots = formState.time_slots.map((slot) => ({
+      ...slot,
+      max_queue_size: Math.max(0, slot.max_queue_size),
+      queue_timeout: Math.max(0, slot.queue_timeout),
+      long_context_tiers: [...slot.long_context_tiers].sort(
+        (left, right) => left.threshold_tokens - right.threshold_tokens
+      ),
+    }))
+    for (const slot of timeSlots) {
+      if (!slot.start_time || !slot.end_time) {
+        toast.error(t('Queue time slot times are required'))
+        return
+      }
+      const slotLongContextError = validateLongContextTiers(
+        slot.long_context_tiers
+      )
+      if (slotLongContextError) {
+        toast.error(slotLongContextError)
+        return
+      }
     }
 
     await saveMutation.mutateAsync({
@@ -220,6 +368,7 @@ export function QueueConfigPage() {
       max_queue_size: Math.max(0, formState.max_queue_size),
       queue_timeout: Math.max(0, formState.queue_timeout),
       long_context_tiers: longContextTiers,
+      time_slots: timeSlots,
     })
   }
 
@@ -270,7 +419,7 @@ export function QueueConfigPage() {
         </div>
       </div>
 
-      <div className='grid gap-4 md:grid-cols-4'>
+      <div className='grid gap-4 md:grid-cols-5'>
         <Card>
           <CardHeader>
             <CardDescription>{t('Configured models')}</CardDescription>
@@ -295,6 +444,12 @@ export function QueueConfigPage() {
             <CardTitle>{summary.longTierModels}</CardTitle>
           </CardHeader>
         </Card>
+        <Card>
+          <CardHeader>
+            <CardDescription>{t('Time-slotted models')}</CardDescription>
+            <CardTitle>{summary.timeSlotModels}</CardTitle>
+          </CardHeader>
+        </Card>
       </div>
 
       <Card>
@@ -313,6 +468,7 @@ export function QueueConfigPage() {
                   <TableHead>{t('Status')}</TableHead>
                   <TableHead>{t('Max queue size')}</TableHead>
                   <TableHead>{t('Queue timeout')}</TableHead>
+                  <TableHead>{t('Time slots')}</TableHead>
                   <TableHead>{t('Long task tiers')}</TableHead>
                   <TableHead className='text-right'>{t('Actions')}</TableHead>
                 </TableRow>
@@ -338,6 +494,24 @@ export function QueueConfigPage() {
                         {config.queue_timeout === 0
                           ? t('System default')
                           : `${config.queue_timeout} ${t('seconds')}`}
+                      </TableCell>
+                      <TableCell>
+                        <div className='flex flex-wrap gap-1'>
+                          {(config.time_slots || []).length > 0 ? (
+                            (config.time_slots || []).map((slot, index) => (
+                              <Badge
+                                key={`${slot.start_time}-${slot.end_time}-${index}`}
+                                variant='outline'
+                              >
+                                {`${slot.start_time}-${slot.end_time} · ${slot.enabled ? t('Enabled') : t('Disabled')}`}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className='text-muted-foreground text-sm'>
+                              {t('Always active')}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className='flex flex-wrap gap-1'>
@@ -385,7 +559,7 @@ export function QueueConfigPage() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className='h-24 text-center'>
+                    <TableCell colSpan={7} className='h-24 text-center'>
                       {t('No queue configuration yet')}
                     </TableCell>
                   </TableRow>
@@ -406,7 +580,7 @@ export function QueueConfigPage() {
           }
         }}
       >
-        <SheetContent className='sm:max-w-xl'>
+        <SheetContent className='sm:max-w-3xl'>
           <SheetHeader>
             <SheetTitle>
               {editingModel ? t('Edit queue config') : t('Add queue config')}
@@ -622,6 +796,328 @@ export function QueueConfigPage() {
                           <Trash2 className='mr-2 h-4 w-4' />
                           {t('Remove tier')}
                         </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className='space-y-3 rounded-lg border p-4'>
+              <div className='flex items-center justify-between gap-3'>
+                <div>
+                  <p className='text-sm font-medium'>{t('Queue time slots')}</p>
+                  <p className='text-muted-foreground text-sm'>
+                    {t(
+                      'When time slots are configured, this model queues only during matching slots.'
+                    )}
+                  </p>
+                </div>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  onClick={addTimeSlot}
+                >
+                  <Plus className='mr-2 h-4 w-4' />
+                  {t('Add time slot')}
+                </Button>
+              </div>
+
+              {formState.time_slots.length === 0 ? (
+                <div className='text-muted-foreground rounded-md border border-dashed p-4 text-sm'>
+                  {t('No queue time slots configured. Static settings are always active.')}
+                </div>
+              ) : (
+                <div className='space-y-4'>
+                  {formState.time_slots.map((slot, slotIndex) => (
+                    <div
+                      key={`${slot.start_time}-${slot.end_time}-${slotIndex}`}
+                      className='space-y-4 rounded-md border p-3'
+                    >
+                      <div className='flex flex-wrap items-center justify-between gap-3'>
+                        <Badge variant='outline'>
+                          {t('Slot {{index}}', { index: slotIndex + 1 })}
+                        </Badge>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          className='text-destructive'
+                          onClick={() => removeTimeSlot(slotIndex)}
+                        >
+                          <Trash2 className='mr-2 h-4 w-4' />
+                          {t('Remove time slot')}
+                        </Button>
+                      </div>
+
+                      <div className='grid gap-4 sm:grid-cols-2'>
+                        <div className='space-y-2'>
+                          <Label htmlFor={`queue-slot-start-${slotIndex}`}>
+                            {t('Start time')}
+                          </Label>
+                          <Input
+                            id={`queue-slot-start-${slotIndex}`}
+                            type='time'
+                            value={slot.start_time}
+                            onChange={(event) =>
+                              updateTimeSlot(slotIndex, {
+                                start_time: event.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className='space-y-2'>
+                          <Label htmlFor={`queue-slot-end-${slotIndex}`}>
+                            {t('End time')}
+                          </Label>
+                          <Input
+                            id={`queue-slot-end-${slotIndex}`}
+                            type='time'
+                            value={slot.end_time}
+                            onChange={(event) =>
+                              updateTimeSlot(slotIndex, {
+                                end_time: event.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className='space-y-2'>
+                        <Label>{t('Weekdays')}</Label>
+                        <div className='flex flex-wrap gap-2'>
+                          {weekdayOptions.map((option) => {
+                            const weekdays = slot.weekdays || []
+                            const checked = weekdays.includes(option.value)
+                            return (
+                              <label
+                                key={option.value}
+                                className='flex items-center gap-2 rounded-md border px-3 py-2 text-sm'
+                              >
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(nextChecked) => {
+                                    if (nextChecked) {
+                                      updateTimeSlot(slotIndex, {
+                                        weekdays: [
+                                          ...weekdays,
+                                          option.value,
+                                        ].sort((left, right) => left - right),
+                                      })
+                                      return
+                                    }
+                                    updateTimeSlot(slotIndex, {
+                                      weekdays: weekdays.filter(
+                                        (day) => day !== option.value
+                                      ),
+                                    })
+                                  }}
+                                />
+                                <span>{option.label}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                        <p className='text-muted-foreground text-sm'>
+                          {t('Leave all unchecked to make this slot active every day.')}
+                        </p>
+                      </div>
+
+                      <div className='flex items-center justify-between rounded-md border p-3'>
+                        <div>
+                          <p className='text-sm font-medium'>
+                            {t('Enable queue in this slot')}
+                          </p>
+                          <p className='text-muted-foreground text-sm'>
+                            {t('Disabled slots match the time window but do not allow queueing.')}
+                          </p>
+                        </div>
+                        <Switch
+                          checked={slot.enabled}
+                          onCheckedChange={(checked) =>
+                            updateTimeSlot(slotIndex, { enabled: checked })
+                          }
+                        />
+                      </div>
+
+                      <div className='grid gap-4 sm:grid-cols-2'>
+                        <div className='space-y-2'>
+                          <Label htmlFor={`queue-slot-max-size-${slotIndex}`}>
+                            {t('Max queue size')}
+                          </Label>
+                          <Input
+                            id={`queue-slot-max-size-${slotIndex}`}
+                            type='number'
+                            min='0'
+                            step='1'
+                            value={slot.max_queue_size}
+                            onChange={(event) =>
+                              updateTimeSlot(slotIndex, {
+                                max_queue_size: Math.max(
+                                  0,
+                                  parseInt(event.target.value, 10) || 0
+                                ),
+                              })
+                            }
+                          />
+                        </div>
+                        <div className='space-y-2'>
+                          <Label htmlFor={`queue-slot-timeout-${slotIndex}`}>
+                            {t('Queue timeout')}
+                          </Label>
+                          <Input
+                            id={`queue-slot-timeout-${slotIndex}`}
+                            type='number'
+                            min='0'
+                            step='1'
+                            value={slot.queue_timeout}
+                            onChange={(event) =>
+                              updateTimeSlot(slotIndex, {
+                                queue_timeout: Math.max(
+                                  0,
+                                  parseInt(event.target.value, 10) || 0
+                                ),
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className='space-y-3 rounded-md border p-3'>
+                        <div className='flex items-center justify-between gap-3'>
+                          <div>
+                            <p className='text-sm font-medium'>
+                              {t('Long task limits')}
+                            </p>
+                            <p className='text-muted-foreground text-sm'>
+                              {t('These long task tiers apply only inside this time slot.')}
+                            </p>
+                          </div>
+                          <Button
+                            type='button'
+                            size='sm'
+                            variant='outline'
+                            onClick={() => addTimeSlotTier(slotIndex)}
+                          >
+                            <Plus className='mr-2 h-4 w-4' />
+                            {t('Add tier')}
+                          </Button>
+                        </div>
+
+                        {slot.long_context_tiers.length === 0 ? (
+                          <div className='text-muted-foreground rounded-md border border-dashed p-4 text-sm'>
+                            {t('No long context tiers configured.')}
+                          </div>
+                        ) : (
+                          <div className='space-y-3'>
+                            {slot.long_context_tiers.map((tier, tierIndex) => (
+                              <div
+                                key={`${slotIndex}-${tier.threshold_tokens}-${tierIndex}`}
+                                className='grid gap-3 rounded-md border p-3 sm:grid-cols-2'
+                              >
+                                <div className='space-y-2'>
+                                  <Label
+                                    htmlFor={`queue-slot-tier-threshold-${slotIndex}-${tierIndex}`}
+                                  >
+                                    {t('Threshold tokens')}
+                                  </Label>
+                                  <Input
+                                    id={`queue-slot-tier-threshold-${slotIndex}-${tierIndex}`}
+                                    type='number'
+                                    min='1'
+                                    step='1'
+                                    value={tier.threshold_tokens}
+                                    onChange={(event) =>
+                                      updateTimeSlotTier(slotIndex, tierIndex, {
+                                        threshold_tokens: normalizeTierValue(
+                                          event.target.value
+                                        ),
+                                      })
+                                    }
+                                  />
+                                </div>
+                                <div className='space-y-2'>
+                                  <Label
+                                    htmlFor={`queue-slot-tier-running-${slotIndex}-${tierIndex}`}
+                                  >
+                                    {t('Max running')}
+                                  </Label>
+                                  <Input
+                                    id={`queue-slot-tier-running-${slotIndex}-${tierIndex}`}
+                                    type='number'
+                                    min='1'
+                                    step='1'
+                                    value={tier.max_running}
+                                    onChange={(event) =>
+                                      updateTimeSlotTier(slotIndex, tierIndex, {
+                                        max_running: normalizeTierValue(
+                                          event.target.value
+                                        ),
+                                      })
+                                    }
+                                  />
+                                </div>
+                                <div className='space-y-2'>
+                                  <Label
+                                    htmlFor={`queue-slot-tier-turns-${slotIndex}-${tierIndex}`}
+                                  >
+                                    {t('Lease turns')}
+                                  </Label>
+                                  <Input
+                                    id={`queue-slot-tier-turns-${slotIndex}-${tierIndex}`}
+                                    type='number'
+                                    min='1'
+                                    step='1'
+                                    value={tier.lease_turns}
+                                    onChange={(event) =>
+                                      updateTimeSlotTier(slotIndex, tierIndex, {
+                                        lease_turns: normalizeTierValue(
+                                          event.target.value
+                                        ),
+                                      })
+                                    }
+                                  />
+                                </div>
+                                <div className='space-y-2'>
+                                  <Label
+                                    htmlFor={`queue-slot-tier-idle-${slotIndex}-${tierIndex}`}
+                                  >
+                                    {t('Idle release seconds')}
+                                  </Label>
+                                  <Input
+                                    id={`queue-slot-tier-idle-${slotIndex}-${tierIndex}`}
+                                    type='number'
+                                    min='1'
+                                    step='1'
+                                    value={tier.lease_idle_timeout_seconds}
+                                    onChange={(event) =>
+                                      updateTimeSlotTier(slotIndex, tierIndex, {
+                                        lease_idle_timeout_seconds:
+                                          normalizeTierValue(
+                                            event.target.value
+                                          ),
+                                      })
+                                    }
+                                  />
+                                </div>
+                                <div className='flex items-end sm:col-span-2'>
+                                  <Button
+                                    type='button'
+                                    variant='outline'
+                                    className='text-destructive'
+                                    onClick={() =>
+                                      removeTimeSlotTier(slotIndex, tierIndex)
+                                    }
+                                    aria-label={t('Remove tier')}
+                                  >
+                                    <Trash2 className='mr-2 h-4 w-4' />
+                                    {t('Remove tier')}
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

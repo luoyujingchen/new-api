@@ -45,6 +45,24 @@ func GetQueueModelStatus(c *gin.Context) {
 	})
 }
 
+func GetQueueLongContextTasks(c *gin.Context) {
+	modelName := strings.TrimSpace(c.Query("model_name"))
+	common.ApiSuccess(c, service.GetRequestQueueService().GetLongContextTasksSnapshot(modelName))
+}
+
+func CancelQueueLongContextTask(c *gin.Context) {
+	var req dto.CancelQueueLongContextTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !service.GetRequestQueueService().CancelLongContextTask(req.Kind, req.ID) {
+		common.ApiErrorMsg(c, "long context task not found")
+		return
+	}
+	common.ApiSuccess(c, gin.H{"cancelled": true})
+}
+
 func GetQueueConfigs(c *gin.Context) {
 	configs, err := model.GetAllQueueConfigs()
 	if err != nil {
@@ -98,6 +116,11 @@ func UpsertQueueConfig(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	timeSlots, err := normalizeQueueTimeSlots(req.TimeSlots)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	config := &model.QueueConfig{
 		ModelName:    modelName,
@@ -106,6 +129,10 @@ func UpsertQueueConfig(c *gin.Context) {
 		QueueTimeout: setting.NormalizeQueueTimeoutOption(req.QueueTimeout),
 	}
 	if err := config.SetLongContextTiers(longContextTiers); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := config.SetTimeSlots(timeSlots); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -141,5 +168,17 @@ func buildQueueConfigResponse(config *model.QueueConfig) dto.QueueConfigResponse
 		MaxQueueSize:     config.MaxQueueSize,
 		QueueTimeout:     config.QueueTimeout,
 		LongContextTiers: config.GetLongContextTiers(),
+		TimeSlots:        config.GetTimeSlots(),
 	}
+}
+
+func normalizeQueueTimeSlots(slots []types.QueueTimeSlotConfig) ([]types.QueueTimeSlotConfig, error) {
+	normalized, err := types.NormalizeQueueTimeSlotConfigs(slots)
+	if err != nil {
+		return nil, err
+	}
+	for index := range normalized {
+		normalized[index].QueueTimeout = setting.NormalizeQueueTimeoutOption(normalized[index].QueueTimeout)
+	}
+	return normalized, nil
 }

@@ -25,6 +25,7 @@ import {
 } from '@/features/usage-logs/section-registry'
 
 const logTypeValues = ['0', '1', '2', '3', '4', '5', '6'] as const
+const queueStatusValues = ['queued', 'unqueued'] as const
 
 const usageLogsSearchSchema = z.object({
   page: z.number().optional().catch(1),
@@ -38,6 +39,7 @@ const usageLogsSearchSchema = z.object({
   username: z.string().optional().catch(''),
   requestId: z.string().optional().catch(''),
   upstreamRequestId: z.string().optional().catch(''),
+  queueStatus: z.enum(queueStatusValues).optional().catch(undefined),
   startTime: z.number().optional(),
   endTime: z.number().optional(),
 })
@@ -50,16 +52,16 @@ export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
         params: { section: USAGE_LOGS_DEFAULT_SECTION },
       })
     }
-    // type 仅 common 使用，非 common 时清掉 URL 里的 type
+    // type 和 queueStatus 仅 common 使用，非 common 时清掉 URL 里的筛选
     if (
       params.section !== 'common' &&
-      Array.isArray(search?.type) &&
-      (search?.type?.length ?? 0) > 0
+      ((Array.isArray(search?.type) && (search?.type?.length ?? 0) > 0) ||
+        search?.queueStatus)
     ) {
       throw redirect({
         to: '/usage-logs/$section',
         params: { section: params.section },
-        search: { ...search, type: undefined },
+        search: { ...search, queueStatus: undefined, type: undefined },
         replace: true,
       })
     }

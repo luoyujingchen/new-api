@@ -49,11 +49,17 @@ import { useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 const logTypeValues = ['0', '1', '2', '3', '4', '5', '6'] as const
+const queueStatusValues = ['queued', 'unqueued'] as const
 
 type LogTypeValue = (typeof logTypeValues)[number]
+type QueueStatusValue = (typeof queueStatusValues)[number]
 
 function isLogTypeValue(value: string): value is LogTypeValue {
   return (logTypeValues as readonly string[]).includes(value)
+}
+
+function isQueueStatusValue(value: string): value is QueueStatusValue {
+  return (queueStatusValues as readonly string[]).includes(value)
 }
 
 interface CommonLogsFilterBarProps<TData> {
@@ -90,6 +96,8 @@ export function CommonLogsFilterBar<TData>(
     if (searchParams.requestId) next.requestId = searchParams.requestId
     if (searchParams.upstreamRequestId)
       next.upstreamRequestId = searchParams.upstreamRequestId
+    if (searchParams.queueStatus)
+      next.queueStatus = searchParams.queueStatus
 
     if (Object.keys(next).length > 0) {
       setFilters((prev) => ({ ...prev, ...next }))
@@ -109,6 +117,7 @@ export function CommonLogsFilterBar<TData>(
     searchParams.username,
     searchParams.requestId,
     searchParams.upstreamRequestId,
+    searchParams.queueStatus,
     searchParams.type,
   ])
 
@@ -168,7 +177,11 @@ export function CommonLogsFilterBar<TData>(
     !!filters.upstreamRequestId
 
   const hasAdditionalFilters =
-    !!filters.model || !!filters.group || !!logType || hasExpandedFilters
+    !!filters.model ||
+    !!filters.group ||
+    !!filters.queueStatus ||
+    !!logType ||
+    hasExpandedFilters
 
   const inputClass = 'w-full sm:w-[140px] lg:w-[160px]'
   const sensitiveType = sensitiveVisible ? 'text' : 'password'
@@ -253,6 +266,31 @@ export function CommonLogsFilterBar<TData>(
                     {t(type.label)}
                   </SelectItem>
                 ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Select
+            items={[
+              { value: 'all', label: t('All') },
+              { value: 'queued', label: t('Queued') },
+              { value: 'unqueued', label: t('Not queued') },
+            ]}
+            value={filters.queueStatus || ''}
+            onValueChange={(value) => {
+              handleChange(
+                'queueStatus',
+                value !== null && isQueueStatusValue(value) ? value : ''
+              )
+            }}
+          >
+            <SelectTrigger className={inputClass}>
+              <SelectValue placeholder={t('Queue status')} />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                <SelectItem value='all'>{t('All')}</SelectItem>
+                <SelectItem value='queued'>{t('Queued')}</SelectItem>
+                <SelectItem value='unqueued'>{t('Not queued')}</SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>

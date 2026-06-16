@@ -63,30 +63,28 @@ func QueueMiddleware() func(c *gin.Context) {
 			return allowed, err
 		}
 
-		if leaseID := strings.TrimSpace(c.GetHeader(service.QueueLeaseIDHeader)); leaseID != "" {
-			leaseUse, ok := queueService.TryBeginLongContextLeaseUse(leaseID, service.LongContextLeaseUseOptions{
-				ModelName:        modelName,
-				TokenID:          tokenID,
-				CompanyID:        companyID,
-				LongContextTiers: longContextTiers,
-			})
-			if ok {
-				allowed, err := canProceed()
-				if err != nil {
-					queueService.CancelLongContextLeaseUse(leaseID)
-					abortWithOpenAiMessage(c, http.StatusInternalServerError, "queue_lease_rate_limit_check_failed")
-					return
-				}
-				if allowed {
-					writeQueueLeaseHeaders(c, leaseUse)
-					defer func() {
-						queueService.FinishLongContextLeaseUse(leaseID)
-					}()
-					c.Next()
-					return
-				}
-				queueService.CancelLongContextLeaseUse(leaseID)
+		retainedLeaseID := ""
+		leaseUse, ok := queueService.TryBeginLongContextLeaseUse(service.LongContextLeaseUseOptions{
+			ModelName:        modelName,
+			TokenID:          tokenID,
+			CompanyID:        companyID,
+			LongContextTiers: longContextTiers,
+		})
+		if ok {
+			allowed, err := canProceed()
+			if err != nil {
+				queueService.CancelLongContextLeaseUse(leaseUse.ID)
+				abortWithOpenAiMessage(c, http.StatusInternalServerError, "queue_lease_rate_limit_check_failed")
+				return
 			}
+			if allowed {
+				defer func() {
+					queueService.FinishLongContextLeaseUse(leaseUse.ID)
+				}()
+				c.Next()
+				return
+			}
+			retainedLeaseID = leaseUse.ID
 		}
 
 		queuedRequest, position, _, err := queueService.Enqueue(service.QueueEnqueueOptions{
@@ -99,10 +97,14 @@ func QueueMiddleware() func(c *gin.Context) {
 			TokenTimeoutSeconds:   tokenTimeout,
 			EstimatedPromptTokens: estimatedPromptTokens,
 			LongContextTiers:      longContextTiers,
+			RetainedLeaseID:       retainedLeaseID,
 			CanProceed:            canProceed,
 			PositionNotifier:      notifier,
 		})
 		if err != nil {
+			if retainedLeaseID != "" {
+				queueService.CancelLongContextLeaseUse(retainedLeaseID)
+			}
 			var queueFullErr *service.QueueFullError
 			if errors.As(err, &queueFullErr) {
 				writeQueueError(c, http.StatusTooManyRequests, queueFullErr.Error(), "queue_full")
@@ -124,23 +126,31 @@ func QueueMiddleware() func(c *gin.Context) {
 			}
 			common.SetContextKey(c, constant.ContextKeyQueueWaitMs, queueWaitMs)
 			queuedRequest.StopWaiting()
-			leaseUse := queueService.StartLongContextLease(queuedRequest)
-			if leaseUse != nil {
-				writeQueueLeaseHeaders(c, leaseUse)
+			if retainedLeaseID := queuedRequest.RetainedLeaseID(); retainedLeaseID != "" {
 				defer func() {
-					queueService.FinishLongContextLeaseUse(leaseUse.ID)
+					queueService.FinishLongContextLeaseUse(retainedLeaseID)
 				}()
 			} else {
-				defer func() {
-					queueService.ReleaseLongContextSlots(queuedRequest)
-					queueService.NotifySchedulingRetry(modelName)
-				}()
+				leaseUse := queueService.StartLongContextLease(queuedRequest)
+				if leaseUse != nil {
+					defer func() {
+						queueService.FinishLongContextLeaseUse(leaseUse.ID)
+					}()
+				} else {
+					defer func() {
+						queueService.ReleaseLongContextSlots(queuedRequest)
+						queueService.NotifySchedulingRetry(modelName)
+					}()
+				}
 			}
 			c.Next()
 			return
 		case <-queuedRequest.Context().Done():
 			queuedRequest.StopWaiting()
 			queueService.Remove(queuedRequest)
+			if retainedLeaseID := queuedRequest.RetainedLeaseID(); retainedLeaseID != "" {
+				queueService.CancelLongContextLeaseUse(retainedLeaseID)
+			}
 			if errors.Is(queuedRequest.Context().Err(), context.DeadlineExceeded) {
 				positionWas := queuedRequest.Position()
 				if positionWas <= 0 {
@@ -155,19 +165,20 @@ func QueueMiddleware() func(c *gin.Context) {
 				writeQueueError(c, http.StatusRequestTimeout, message, "queue_timeout")
 				return
 			}
+			if queuedRequest.IsAdminCancelled() {
+				message := fmt.Sprintf("request cancelled in queue by administrator (model: %s)", modelName)
+				if isStream && c.Writer.Written() {
+					writeQueueStreamError(c, message, "queue_cancelled")
+					c.Abort()
+					return
+				}
+				writeQueueError(c, http.StatusConflict, message, "queue_cancelled")
+				return
+			}
 			c.Abort()
 			return
 		}
 	}
-}
-
-func writeQueueLeaseHeaders(c *gin.Context, leaseUse *service.LongContextLeaseUse) {
-	if c == nil || leaseUse == nil || leaseUse.ID == "" {
-		return
-	}
-	c.Header(service.QueueLeaseIDHeader, leaseUse.ID)
-	c.Header(service.QueueLeaseRemainingHeader, strconv.Itoa(leaseUse.RemainingTurns))
-	c.Header(service.QueueLeaseIdleTimeoutSecondsHeader, strconv.Itoa(leaseUse.IdleTimeoutSeconds))
 }
 
 func loadQueueTokenSettings(tokenID int) (priority int, timeout int) {

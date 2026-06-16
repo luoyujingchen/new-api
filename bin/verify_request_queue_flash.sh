@@ -169,6 +169,8 @@ payload = {
     "enabled": data["enabled"],
     "max_queue_size": data["max_queue_size"],
     "queue_timeout": data["queue_timeout"],
+    "long_context_tiers": data.get("long_context_tiers") or [],
+    "time_slots": data.get("time_slots") or [],
 }
 print(json.dumps(payload, ensure_ascii=False))
 PY
@@ -285,7 +287,8 @@ apply_test_settings() {
 insert_company() {
   local name=$1
   local queue_priority=$2
-  run_sql "insert into companies(name, code, description, status, sort_order, queue_priority, created_at, updated_at) values ('${PREFIX}_${name}','${PREFIX}_${name}','queue test ${name}',1,0,${queue_priority},extract(epoch from now())::bigint,extract(epoch from now())::bigint) returning id;"
+  local code_name=${name%_company}
+  run_sql "insert into companies(name, code, description, status, sort_order, queue_priority, created_at, updated_at) values ('${PREFIX}_${name}','${PREFIX}_${code_name}','queue test ${name}',1,0,${queue_priority},extract(epoch from now())::bigint,extract(epoch from now())::bigint) returning id;"
 }
 
 insert_user() {
@@ -309,14 +312,14 @@ provision_user_bundle() {
   local company_var=$4
   local prefix_var=$5
 
-  local company_id user_id token_prefix
-  company_id=$(insert_company "${bundle_name}_company" "$company_priority")
-  user_id=$(insert_user "${bundle_name}_user" "$company_id")
-  token_prefix="${PREFIX}_${bundle_name}"
+  local created_company_id created_user_id created_token_prefix
+  created_company_id=$(insert_company "${bundle_name}_company" "$company_priority")
+  created_user_id=$(insert_user "${bundle_name}_user" "$created_company_id")
+  created_token_prefix="${PREFIX}_${bundle_name}"
 
-  printf -v "$company_var" '%s' "$company_id"
-  printf -v "$user_var" '%s' "$user_id"
-  printf -v "$prefix_var" '%s' "$token_prefix"
+  printf -v "$company_var" '%s' "$created_company_id"
+  printf -v "$user_var" '%s' "$created_user_id"
+  printf -v "$prefix_var" '%s' "$created_token_prefix"
 }
 
 provision_shared_bundles() {

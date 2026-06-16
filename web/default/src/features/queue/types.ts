@@ -18,6 +18,16 @@ export type QueueLongContextTierStatus = QueueLongContextTier & {
   queued: number
 }
 
+export type QueueTimeSlotConfig = {
+  start_time: string
+  end_time: string
+  weekdays?: number[]
+  enabled: boolean
+  max_queue_size: number
+  queue_timeout: number
+  long_context_tiers: QueueLongContextTier[]
+}
+
 export type QueueModelSnapshot = {
   queued: number
   avg_wait_sec: number
@@ -39,12 +49,39 @@ export type QueueModelStatus = QueueModelSnapshot & {
   model_name: string
 }
 
+export type QueueLongContextTaskKind = 'queued' | 'leased'
+
+export type QueueLongContextTask = {
+  id: string
+  kind: QueueLongContextTaskKind
+  model_name: string
+  token_id: number
+  company_id: number
+  threshold_tokens: number
+  estimated_prompt_tokens: number
+  priority: number
+  status: string
+  created_at: number
+  wait_seconds: number
+  remaining_turns: number
+  lease_turns: number
+  idle_timeout_seconds: number
+  idle_expires_at?: number
+  active: boolean
+}
+
+export type QueueLongContextTasksSnapshot = {
+  items: QueueLongContextTask[]
+  total: number
+}
+
 export type QueueConfig = {
   model_name: string
   enabled: boolean
   max_queue_size: number
   queue_timeout: number
   long_context_tiers: QueueLongContextTier[]
+  time_slots: QueueTimeSlotConfig[]
 }
 
 export type QueueConfigFormData = {
@@ -53,4 +90,5 @@ export type QueueConfigFormData = {
   max_queue_size: number
   queue_timeout: number
   long_context_tiers: QueueLongContextTier[]
+  time_slots: QueueTimeSlotConfig[]
 }

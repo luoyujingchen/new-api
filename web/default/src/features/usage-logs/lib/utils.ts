@@ -207,6 +207,9 @@ export function buildApiParams(config: {
     ...(searchParams.upstreamRequestId
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
       : {}),
+    ...(searchParams.queueStatus
+      ? { queue_status: String(searchParams.queueStatus) }
+      : {}),
     ...buildTimeRangeParams(searchParams, false),
   }
 

@@ -48,7 +48,7 @@ import {
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { createCompany, updateCompany } from '../api'
-import { type Company, type CompanyFormData, STATUS_OPTIONS } from '../types'
+import { type CompanyFormData, STATUS_OPTIONS } from '../types'
 import { useCompanies } from './companies-provider'
 
 const companyFormSchema = z.object({

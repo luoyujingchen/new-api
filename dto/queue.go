@@ -7,6 +7,7 @@ type UpsertQueueConfigRequest struct {
 	MaxQueueSize     int                          `json:"max_queue_size"`
 	QueueTimeout     int                          `json:"queue_timeout"`
 	LongContextTiers []types.QueueLongContextTier `json:"long_context_tiers"`
+	TimeSlots        []types.QueueTimeSlotConfig  `json:"time_slots"`
 }
 
 type QueueConfigResponse struct {
@@ -15,6 +16,7 @@ type QueueConfigResponse struct {
 	MaxQueueSize     int                          `json:"max_queue_size"`
 	QueueTimeout     int                          `json:"queue_timeout"`
 	LongContextTiers []types.QueueLongContextTier `json:"long_context_tiers"`
+	TimeSlots        []types.QueueTimeSlotConfig  `json:"time_slots"`
 }
 
 type QueueModelStatusResponse struct {
@@ -27,4 +29,9 @@ type QueueModelStatusResponse struct {
 	Enabled          bool                               `json:"enabled"`
 	Buckets          map[string]int                     `json:"buckets"`
 	LongContextTiers []types.QueueLongContextTierStatus `json:"long_context_tiers"`
+}
+
+type CancelQueueLongContextTaskRequest struct {
+	Kind string `json:"kind" binding:"required"`
+	ID   string `json:"id" binding:"required"`
 }

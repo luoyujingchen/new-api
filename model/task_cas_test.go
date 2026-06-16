@@ -100,6 +100,80 @@ func TestAppendQueueWaitInfoAbsent(t *testing.T) {
 	require.False(t, exists)
 }
 
+func TestUsageLogQueueStatusFilter(t *testing.T) {
+	require.NoError(t, DB.Exec("DELETE FROM logs").Error)
+	t.Cleanup(func() {
+		DB.Exec("DELETE FROM logs")
+	})
+
+	now := time.Now().Unix()
+	logs := []Log{
+		{
+			UserId:           1,
+			Username:         "alice",
+			CreatedAt:        now,
+			Type:             LogTypeConsume,
+			ModelName:        "deepseek-v4-flash",
+			Quota:            10,
+			PromptTokens:     3,
+			CompletionTokens: 7,
+			Other:            `{"queue_wait_ms":1234}`,
+		},
+		{
+			UserId:           1,
+			Username:         "alice",
+			CreatedAt:        now,
+			Type:             LogTypeConsume,
+			ModelName:        "deepseek-v4-flash",
+			Quota:            20,
+			PromptTokens:     5,
+			CompletionTokens: 11,
+			Other:            `{"cache_tokens":0}`,
+		},
+		{
+			UserId:           2,
+			Username:         "bob",
+			CreatedAt:        now,
+			Type:             LogTypeConsume,
+			ModelName:        "deepseek-v4-flash",
+			Quota:            30,
+			PromptTokens:     13,
+			CompletionTokens: 17,
+			Other:            "",
+		},
+	}
+	require.NoError(t, DB.Create(&logs).Error)
+
+	queuedLogs, queuedTotal, err := GetAllLogs(LogTypeConsume, 0, 0, "", "", "", 0, 10, 0, "", "", "", "queued")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), queuedTotal)
+	require.Len(t, queuedLogs, 1)
+	require.Equal(t, 10, queuedLogs[0].Quota)
+
+	unqueuedLogs, unqueuedTotal, err := GetAllLogs(LogTypeConsume, 0, 0, "", "", "", 0, 10, 0, "", "", "", "unqueued")
+	require.NoError(t, err)
+	require.Equal(t, int64(2), unqueuedTotal)
+	require.Len(t, unqueuedLogs, 2)
+
+	userQueuedLogs, userQueuedTotal, err := GetUserLogs(1, LogTypeConsume, 0, 0, "", "", 0, 10, "", "", "", "queued")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), userQueuedTotal)
+	require.Len(t, userQueuedLogs, 1)
+
+	userUnqueuedLogs, userUnqueuedTotal, err := GetUserLogs(1, LogTypeConsume, 0, 0, "", "", 0, 10, "", "", "", "unqueued")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), userUnqueuedTotal)
+	require.Len(t, userUnqueuedLogs, 1)
+
+	stat, err := SumUsedQuota(LogTypeConsume, 0, 0, "", "", "", 0, "", "queued")
+	require.NoError(t, err)
+	require.Equal(t, 10, stat.Quota)
+
+	stat, err = SumUsedQuota(LogTypeConsume, 0, 0, "", "", "", 0, "", "unqueued")
+	require.NoError(t, err)
+	require.Equal(t, 50, stat.Quota)
+}
+
 // ---------------------------------------------------------------------------
 // Snapshot / Equal — pure logic tests (no DB)
 // ---------------------------------------------------------------------------

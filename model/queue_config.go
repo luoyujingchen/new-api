@@ -17,6 +17,7 @@ type QueueConfig struct {
 	MaxQueueSize     int    `json:"max_queue_size" gorm:"default:0"`
 	QueueTimeout     int    `json:"queue_timeout" gorm:"default:0"`
 	LongContextTiers string `json:"-" gorm:"type:text"`
+	TimeSlots        string `json:"-" gorm:"type:text"`
 	CreatedAt        int64  `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt        int64  `json:"updated_at" gorm:"autoUpdateTime"`
 }
@@ -65,6 +66,7 @@ func UpsertQueueConfig(queueConfig *QueueConfig) error {
 	existing.MaxQueueSize = queueConfig.MaxQueueSize
 	existing.QueueTimeout = queueConfig.QueueTimeout
 	existing.LongContextTiers = queueConfig.LongContextTiers
+	existing.TimeSlots = queueConfig.TimeSlots
 	return DB.Save(existing).Error
 }
 
@@ -108,5 +110,40 @@ func (q *QueueConfig) SetLongContextTiers(tiers []types.QueueLongContextTier) er
 		return err
 	}
 	q.LongContextTiers = string(data)
+	return nil
+}
+
+func (q *QueueConfig) GetTimeSlots() []types.QueueTimeSlotConfig {
+	if q == nil || strings.TrimSpace(q.TimeSlots) == "" {
+		return nil
+	}
+	var slots []types.QueueTimeSlotConfig
+	if err := common.Unmarshal([]byte(q.TimeSlots), &slots); err != nil {
+		return nil
+	}
+	normalized, err := types.NormalizeQueueTimeSlotConfigs(slots)
+	if err != nil {
+		return nil
+	}
+	return normalized
+}
+
+func (q *QueueConfig) SetTimeSlots(slots []types.QueueTimeSlotConfig) error {
+	if q == nil {
+		return errors.New("queue config is nil")
+	}
+	normalized, err := types.NormalizeQueueTimeSlotConfigs(slots)
+	if err != nil {
+		return err
+	}
+	if len(normalized) == 0 {
+		q.TimeSlots = ""
+		return nil
+	}
+	data, err := common.Marshal(normalized)
+	if err != nil {
+		return err
+	}
+	q.TimeSlots = string(data)
 	return nil
 }

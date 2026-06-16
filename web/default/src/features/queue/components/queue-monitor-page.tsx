@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { RefreshCw } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { RefreshCw, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,8 +28,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { LearnMore } from '@/components/learn-more'
-import { getQueueModelStatus, getQueueStatus } from '../api'
-import type { QueueModelSnapshot } from '../types'
+import {
+  cancelQueueLongContextTask,
+  getQueueLongContextTasks,
+  getQueueModelStatus,
+  getQueueStatus,
+} from '../api'
+import type { QueueLongContextTask, QueueModelSnapshot } from '../types'
 
 type QueueMonitorRow = QueueModelSnapshot & {
   model_name: string
@@ -43,6 +49,29 @@ function formatBuckets(buckets: Record<string, number>) {
   return Object.entries(buckets).sort((left, right) => {
     return Number(right[0]) - Number(left[0])
   })
+}
+
+function formatTimestamp(timestamp: number) {
+  if (!timestamp) return '-'
+  return new Date(timestamp * 1000).toLocaleString()
+}
+
+function formatDuration(
+  seconds: number,
+  units: { h: string; m: string; s: string }
+) {
+  const normalized = Math.max(0, Math.floor(seconds || 0))
+  const hours = Math.floor(normalized / 3600)
+  const minutes = Math.floor((normalized % 3600) / 60)
+  const remainingSeconds = normalized % 60
+
+  if (hours > 0) {
+    return `${hours}${units.h} ${minutes}${units.m}`
+  }
+  if (minutes > 0) {
+    return `${minutes}${units.m} ${remainingSeconds}${units.s}`
+  }
+  return `${remainingSeconds}${units.s}`
 }
 
 function hasLongContextActivity(
@@ -79,6 +108,7 @@ function QueueMetricHelp({
 
 export function QueueMonitorPage() {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
 
   const queueStatusQuery = useQuery({
@@ -93,6 +123,52 @@ export function QueueMonitorPage() {
     enabled: !!selectedModel,
     refetchInterval: selectedModel ? 5000 : false,
   })
+
+  const longContextTasksQuery = useQuery({
+    queryKey: ['queue-long-context-tasks'],
+    queryFn: () => getQueueLongContextTasks(),
+    refetchInterval: 5000,
+  })
+
+  const cancelTaskMutation = useMutation({
+    mutationFn: (task: QueueLongContextTask) =>
+      cancelQueueLongContextTask(task.kind, task.id),
+    onSuccess: (result) => {
+      if (result.success) {
+        toast.success(t('Long-context task cancelled'))
+        queryClient.invalidateQueries({ queryKey: ['queue-status'] })
+        queryClient.invalidateQueries({ queryKey: ['queue-long-context-tasks'] })
+      } else {
+        toast.error(result.message || t('Operation failed'))
+      }
+    },
+    onError: () => {
+      toast.error(t('Operation failed'))
+    },
+  })
+
+  const handleCancelTask = (task: QueueLongContextTask) => {
+    if (task.kind !== 'queued') {
+      return
+    }
+    if (!window.confirm(t('Cancel this queued long-context request?'))) {
+      return
+    }
+    cancelTaskMutation.mutate(task)
+  }
+
+  const getTaskStatusLabel = (status: string) => {
+    switch (status) {
+      case 'waiting':
+        return t('Waiting')
+      case 'active':
+        return t('Active')
+      case 'idle':
+        return t('Idle')
+      default:
+        return status
+    }
+  }
 
   const rows = useMemo<QueueMonitorRow[]>(() => {
     return Object.entries(queueStatusQuery.data?.models || {})
@@ -110,6 +186,8 @@ export function QueueMonitorPage() {
   }, [queueStatusQuery.data])
 
   const queuedModels = rows.filter((row) => row.queued > 0).length
+  const longContextTasks = longContextTasksQuery.data?.items || []
+  const durationUnits = { h: t('h'), m: t('m'), s: t('s') }
   const columnHelp = {
     throughput: t(
       'Requests dequeued from this model queue during the last 60 seconds. This is queue throughput, not upstream provider RPM.'
@@ -290,6 +368,110 @@ export function QueueMonitorPage() {
                   <TableRow>
                     <TableCell colSpan={9} className='h-24 text-center'>
                       {t('No queue activity yet')}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('Long-context tasks')}</CardTitle>
+          <CardDescription>
+            {t('Queued requests and retained long-context slots.')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className='rounded-md border'>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('Status')}</TableHead>
+                  <TableHead>{t('Model')}</TableHead>
+                  <TableHead>{t('Threshold tokens')}</TableHead>
+                  <TableHead>{t('Token ID')}</TableHead>
+                  <TableHead>{t('Company ID')}</TableHead>
+                  <TableHead>{t('Prompt tokens')}</TableHead>
+                  <TableHead>{t('Priority')}</TableHead>
+                  <TableHead>{t('Created at')}</TableHead>
+                  <TableHead>{t('Wait duration')}</TableHead>
+                  <TableHead>{t('Remaining turns')}</TableHead>
+                  <TableHead>{t('Idle expires at')}</TableHead>
+                  <TableHead className='text-right'>{t('Actions')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {longContextTasks.length > 0 ? (
+                  longContextTasks.map((task) => (
+                    <TableRow key={`${task.kind}:${task.id}`}>
+                      <TableCell>
+                        <div className='flex flex-wrap gap-1'>
+                          <Badge
+                            variant={
+                              task.kind === 'queued' ? 'secondary' : 'outline'
+                            }
+                          >
+                            {task.kind === 'queued'
+                              ? t('Queued')
+                              : t('Retained')}
+                          </Badge>
+                          <Badge variant='outline'>
+                            {getTaskStatusLabel(task.status)}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell className='font-medium'>
+                        {task.model_name}
+                      </TableCell>
+                      <TableCell>{`>=${task.threshold_tokens}`}</TableCell>
+                      <TableCell>{task.token_id || '-'}</TableCell>
+                      <TableCell>{task.company_id || '-'}</TableCell>
+                      <TableCell>{task.estimated_prompt_tokens}</TableCell>
+                      <TableCell>{`P${task.priority}`}</TableCell>
+                      <TableCell>{formatTimestamp(task.created_at)}</TableCell>
+                      <TableCell>
+                        {task.kind === 'queued'
+                          ? formatDuration(task.wait_seconds, durationUnits)
+                          : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {task.kind === 'leased'
+                          ? `${task.remaining_turns}/${task.lease_turns}`
+                          : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {task.kind === 'leased'
+                          ? formatTimestamp(task.idle_expires_at || 0)
+                          : '-'}
+                      </TableCell>
+                      <TableCell className='text-right'>
+                        {task.kind === 'queued' ? (
+                          <Button
+                            variant='destructive'
+                            size='sm'
+                            onClick={() => handleCancelTask(task)}
+                            disabled={cancelTaskMutation.isPending}
+                          >
+                            <Trash2 className='mr-2 h-4 w-4' />
+                            {t('Cancel request')}
+                          </Button>
+                        ) : (
+                          <span className='text-muted-foreground text-sm'>
+                            {t('Auto release')}
+                          </span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={12} className='h-24 text-center'>
+                      {longContextTasksQuery.isLoading
+                        ? t('Loading...')
+                        : t('No long-context tasks')}
                     </TableCell>
                   </TableRow>
                 )}

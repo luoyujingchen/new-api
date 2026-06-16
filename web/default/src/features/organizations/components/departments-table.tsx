@@ -43,8 +43,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
-import { deleteDepartment, updateDepartmentStatus } from '../api'
-import { getDepartments } from '../api'
+import { getDepartments, updateDepartmentStatus } from '../api'
 import { type Department } from '../types'
 import { useDepartments } from './departments-provider'
 

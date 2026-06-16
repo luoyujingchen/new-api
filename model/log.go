@@ -322,7 +322,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, queueStatus string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -351,6 +351,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
 	}
+	tx = applyLogQueueStatusFilter(tx, "logs.other", queueStatus)
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
 		return nil, 0, err
@@ -405,7 +406,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, queueStatus string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -430,6 +431,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
 	}
+	tx = applyLogQueueStatusFilter(tx, "logs.other", queueStatus)
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
 		common.SysError("failed to count user logs: " + err.Error())
@@ -471,7 +473,20 @@ func applyLogContainsFilter(tx *gorm.DB, column string, value string) *gorm.DB {
 	return tx.Where(column+" LIKE ? ESCAPE '!'", pattern)
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
+func applyLogQueueStatusFilter(tx *gorm.DB, column string, queueStatus string) *gorm.DB {
+	const queueWaitPattern = `%"queue_wait_ms"%`
+
+	switch strings.TrimSpace(queueStatus) {
+	case "queued":
+		return tx.Where(column+" LIKE ?", queueWaitPattern)
+	case "unqueued":
+		return tx.Where("("+column+" IS NULL OR "+column+" = '' OR "+column+" NOT LIKE ?)", queueWaitPattern)
+	default:
+		return tx
+	}
+}
+
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, queueStatus string) (stat Stat, err error) {
 	// 1. 查询配额消耗
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 	tx = applyLogContainsFilter(tx, "username", username)
@@ -489,6 +504,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	if group != "" {
 		tx = tx.Where(logGroupCol+" = ?", group)
 	}
+	tx = applyLogQueueStatusFilter(tx, "other", queueStatus)
 	tx = tx.Where("type = ?", LogTypeConsume)
 
 	// 2. 查询时间段内的请求数和 token 数（用于计算平均 RPM/TPM）
@@ -508,6 +524,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	if group != "" {
 		periodQuery = periodQuery.Where(logGroupCol+" = ?", group)
 	}
+	periodQuery = applyLogQueueStatusFilter(periodQuery, "other", queueStatus)
 	periodQuery = periodQuery.Where("type = ?", LogTypeConsume)
 
 	// 3. 查询实时最近 1 分钟的请求数和 token 数
@@ -521,6 +538,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	if group != "" {
 		realtimeQuery = realtimeQuery.Where(logGroupCol+" = ?", group)
 	}
+	realtimeQuery = applyLogQueueStatusFilter(realtimeQuery, "other", queueStatus)
 	realtimeQuery = realtimeQuery.Where("type = ?", LogTypeConsume)
 	realtimeQuery = realtimeQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
 

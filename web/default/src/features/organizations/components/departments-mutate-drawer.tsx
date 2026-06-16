@@ -79,31 +79,107 @@ const DEFAULT_VALUES: DepartmentFormValues = {
 }
 
 interface DepartmentsMutateDrawerProps {
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   defaultCompanyId?: number
+  currentRow?: Department | null
+  onRefresh?: () => void
+}
+
+interface DepartmentsMutateDrawerContentProps {
+  dialogOpen: 'create' | 'create-child' | 'update' | null
+  sheetOpen: boolean
+  isCreateChild: boolean
+  isUpdate: boolean
+  currentRow: Department | null
+  defaultCompanyId?: number
+  filteredCompanyId?: number
+  onClose: () => void
+  onSaved: () => void
 }
 
 const route = getRouteApi('/_authenticated/organizations/departments')
 
-export function DepartmentsMutateDrawer(_props: DepartmentsMutateDrawerProps) {
-  const { t } = useTranslation()
+export function DepartmentsMutateDrawer(props: DepartmentsMutateDrawerProps) {
+  if (props.open !== undefined) {
+    return <ControlledDepartmentsMutateDrawer {...props} />
+  }
+  return <ProviderDepartmentsMutateDrawer {...props} />
+}
+
+function ProviderDepartmentsMutateDrawer({
+  defaultCompanyId,
+}: DepartmentsMutateDrawerProps) {
   const search = route.useSearch()
-  const { open, setOpen, currentRow, setCurrentRow, triggerRefresh } = useDepartments()
-  const isCreateChild = open === 'create-child'
-  const isUpdate = open === 'update'
-  const filteredCompanyId = search.company_id
+  const { open, setOpen, currentRow, setCurrentRow, triggerRefresh } =
+    useDepartments()
+  const sheetOpen = open === 'create' || open === 'create-child' || open === 'update'
+  const dialogOpen = sheetOpen ? open : null
+
+  return (
+    <DepartmentsMutateDrawerContent
+      dialogOpen={dialogOpen}
+      sheetOpen={sheetOpen}
+      isCreateChild={open === 'create-child'}
+      isUpdate={open === 'update'}
+      currentRow={currentRow}
+      defaultCompanyId={defaultCompanyId}
+      filteredCompanyId={search.company_id}
+      onClose={() => {
+        setOpen(null)
+        setCurrentRow(null)
+      }}
+      onSaved={triggerRefresh}
+    />
+  )
+}
+
+function ControlledDepartmentsMutateDrawer({
+  open = false,
+  onOpenChange,
+  defaultCompanyId,
+  currentRow,
+  onRefresh,
+}: DepartmentsMutateDrawerProps) {
+  const activeRow = currentRow ?? null
+
+  return (
+    <DepartmentsMutateDrawerContent
+      dialogOpen={open ? (activeRow ? 'update' : 'create') : null}
+      sheetOpen={open}
+      isCreateChild={false}
+      isUpdate={!!activeRow}
+      currentRow={activeRow}
+      defaultCompanyId={defaultCompanyId}
+      filteredCompanyId={defaultCompanyId}
+      onClose={() => onOpenChange?.(false)}
+      onSaved={() => onRefresh?.()}
+    />
+  )
+}
+
+function DepartmentsMutateDrawerContent({
+  dialogOpen,
+  sheetOpen,
+  isCreateChild,
+  isUpdate,
+  currentRow,
+  defaultCompanyId,
+  filteredCompanyId,
+  onClose,
+  onSaved,
+}: DepartmentsMutateDrawerContentProps) {
+  const { t } = useTranslation()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(
-    filteredCompanyId || null
+    filteredCompanyId || defaultCompanyId || null
   )
-
-  const sheetOpen = open === 'create' || open === 'create-child' || open === 'update'
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
       return
     }
-    setOpen(null)
-    setCurrentRow(null)
+    onClose()
   }
 
   const { data: companiesData } = useQuery({
@@ -128,7 +204,7 @@ export function DepartmentsMutateDrawer(_props: DepartmentsMutateDrawerProps) {
   })
 
   useEffect(() => {
-    if (open === 'create-child' && currentRow) {
+    if (dialogOpen === 'create-child' && currentRow) {
       setSelectedCompanyId(currentRow.company_id)
       form.reset({
         ...DEFAULT_VALUES,
@@ -146,26 +222,36 @@ export function DepartmentsMutateDrawer(_props: DepartmentsMutateDrawerProps) {
         sort_order: currentRow.sort_order,
       })
     } else if (sheetOpen && !isUpdate) {
-      if (filteredCompanyId) {
-        setSelectedCompanyId(filteredCompanyId)
+      const initialCompanyId = filteredCompanyId || defaultCompanyId
+      if (initialCompanyId) {
+        setSelectedCompanyId(initialCompanyId)
         form.reset({
           ...DEFAULT_VALUES,
-          company_id: filteredCompanyId,
+          company_id: initialCompanyId,
         })
       } else {
         setSelectedCompanyId(null)
         form.reset(DEFAULT_VALUES)
       }
     }
-  }, [sheetOpen, open, isUpdate, currentRow, filteredCompanyId, form])
+  }, [
+    sheetOpen,
+    dialogOpen,
+    isUpdate,
+    currentRow,
+    filteredCompanyId,
+    defaultCompanyId,
+    form,
+  ])
 
   const handleCompanyChange = (companyId: number) => {
     setSelectedCompanyId(companyId)
     form.setValue('parent_id', null)
   }
 
+  const isCompanyLocked = !!defaultCompanyId
   const availableParentDepartments = departments.filter(
-    (dept) => !isUpdate || dept.id !== currentRow!.id
+    (dept) => !isUpdate || !currentRow || dept.id !== currentRow.id
   )
 
   const onSubmit = async (data: DepartmentFormValues) => {
@@ -179,7 +265,7 @@ export function DepartmentsMutateDrawer(_props: DepartmentsMutateDrawerProps) {
         status: data.status,
         sort_order: data.sort_order,
       }
-      const result = isUpdate
+      const result = isUpdate && currentRow
         ? await updateDepartment(currentRow!.id, {
             name: data.name,
             parent_id: data.parent_id ?? null,
@@ -196,7 +282,7 @@ export function DepartmentsMutateDrawer(_props: DepartmentsMutateDrawerProps) {
             : t('Department created successfully')
         )
         handleOpenChange(false)
-        triggerRefresh()
+        onSaved()
       } else {
         toast.error(result.message || t('Operation failed'))
       }
@@ -246,7 +332,7 @@ export function DepartmentsMutateDrawer(_props: DepartmentsMutateDrawerProps) {
                       }
                     }}
                     value={field.value ? String(field.value) : ''}
-                    disabled={isUpdate || isCreateChild}
+                    disabled={isUpdate || isCreateChild || isCompanyLocked}
                   >
                     <FormControl>
                       <SelectTrigger>
