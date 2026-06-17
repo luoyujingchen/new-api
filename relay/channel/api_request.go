@@ -13,6 +13,7 @@ import (
 
 	common2 "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -495,8 +496,15 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	}
 
+	if capture, ok := model.GetUsageLogPayloadCapture(c); ok && capture != nil {
+		capture.CaptureUpstreamRequest(req)
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
+		if capture, ok := model.GetUsageLogPayloadCapture(c); ok && capture != nil {
+			capture.CaptureUpstreamError(err)
+		}
 		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
@@ -506,6 +514,9 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {
 		c.Set(common2.UpstreamRequestIdKey, upID)
+	}
+	if capture, ok := model.GetUsageLogPayloadCapture(c); ok && capture != nil {
+		capture.CaptureUpstreamResponse(resp)
 	}
 
 	_ = req.Body.Close()

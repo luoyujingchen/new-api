@@ -2,6 +2,8 @@ package model
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -15,17 +17,25 @@ import (
 
 // UserBase struct remains the same as it represents the cached data structure
 type UserBase struct {
-	Id               int    `json:"id"`
-	Group            string `json:"group"`
-	Email            string `json:"email"`
-	Quota            int    `json:"quota"`
-	Status           int    `json:"status"`
-	Username         string `json:"username"`
-	Setting          string `json:"setting"`
-	CompanyId        int64  `json:"company_id"`
-	CompanyLoaded    bool   `json:"company_loaded"`
-	DepartmentId     int64  `json:"department_id"`
-	DepartmentLoaded bool   `json:"department_loaded"`
+	Id                  int    `json:"id"`
+	Group               string `json:"group"`
+	Email               string `json:"email"`
+	Quota               int    `json:"quota"`
+	Status              int    `json:"status"`
+	Username            string `json:"username"`
+	DisplayName         string `json:"display_name"`
+	Role                int    `json:"role"`
+	Setting             string `json:"setting"`
+	CompanyId           int64  `json:"company_id"`
+	CompanyName         string `json:"company_name"`
+	CompanyCode         string `json:"company_code"`
+	DepartmentId        int64  `json:"department_id"`
+	DepartmentName      string `json:"department_name"`
+	DepartmentPath      string `json:"department_path"`
+	DepartmentLevel     int    `json:"department_level"`
+	DepartmentHierarchy string `json:"department_hierarchy"`
+	CompanyLoaded       bool   `json:"company_loaded"`
+	OrganizationLoaded  bool   `json:"organization_loaded"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -34,12 +44,24 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserStatus, user.Status)
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
-	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
+	common.SetContextKey(c, constant.ContextKeyUserDisplayName, user.DisplayName)
+	common.SetContextKey(c, constant.ContextKeyUserRole, user.Role)
+	setting := user.GetSetting()
+	common.SetContextKey(c, constant.ContextKeyUserSetting, setting)
+	common.SetContextKey(c, constant.ContextKeyRecordIpLog, setting.RecordIpLog)
 	if user.CompanyLoaded && user.CompanyId > 0 {
 		common.SetContextKey(c, constant.ContextKeyUserCompanyId, user.CompanyId)
 	}
-	if user.DepartmentLoaded && user.DepartmentId > 0 {
-		common.SetContextKey(c, constant.ContextKeyUserDepartmentId, user.DepartmentId)
+	if user.OrganizationLoaded {
+		common.SetContextKey(c, constant.ContextKeyUserCompanyName, user.CompanyName)
+		common.SetContextKey(c, constant.ContextKeyUserCompanyCode, user.CompanyCode)
+		if user.DepartmentId > 0 {
+			common.SetContextKey(c, constant.ContextKeyUserDepartmentId, user.DepartmentId)
+		}
+		common.SetContextKey(c, constant.ContextKeyUserDepartmentName, user.DepartmentName)
+		common.SetContextKey(c, constant.ContextKeyUserDepartmentPath, user.DepartmentPath)
+		common.SetContextKey(c, constant.ContextKeyUserDepartmentLevel, user.DepartmentLevel)
+		common.SetContextKey(c, constant.ContextKeyUserDepartmentHierarchy, user.DepartmentHierarchy)
 	}
 }
 
@@ -78,10 +100,12 @@ func updateUserCache(user User) error {
 	if !common.RedisEnabled {
 		return nil
 	}
+	baseUser := user.ToBaseUser()
+	enrichUserBaseOrganization(baseUser)
 
 	return common.RedisHSetObj(
 		getUserCacheKey(user.Id),
-		user.ToBaseUser(),
+		baseUser,
 		time.Duration(common.RedisKeyCacheSeconds())*time.Second,
 	)
 }
@@ -103,7 +127,7 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 
 	// Try getting from Redis first
 	userCache, err = cacheGetUserBase(userId)
-	if err == nil && userCache.CompanyLoaded && userCache.DepartmentLoaded {
+	if err == nil && userCache.CompanyLoaded && userCache.OrganizationLoaded {
 		return userCache, nil
 	}
 
@@ -116,15 +140,16 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 
 	// Create cache object from user data
 	userCache = &UserBase{
-		Id:               user.Id,
-		Group:            user.Group,
-		Quota:            user.Quota,
-		Status:           user.Status,
-		Username:         user.Username,
-		Setting:          user.Setting,
-		Email:            user.Email,
-		CompanyLoaded:    true,
-		DepartmentLoaded: true,
+		Id:            user.Id,
+		Group:         user.Group,
+		Quota:         user.Quota,
+		Status:        user.Status,
+		Username:      user.Username,
+		DisplayName:   user.DisplayName,
+		Role:          user.Role,
+		Setting:       user.Setting,
+		Email:         user.Email,
+		CompanyLoaded: true,
 	}
 	if user.CompanyId != nil {
 		userCache.CompanyId = *user.CompanyId
@@ -132,8 +157,85 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	if user.DepartmentId != nil {
 		userCache.DepartmentId = *user.DepartmentId
 	}
+	enrichUserBaseOrganization(userCache)
 
 	return userCache, nil
+}
+
+func enrichUserBaseOrganization(userCache *UserBase) {
+	if userCache == nil {
+		return
+	}
+	userCache.OrganizationLoaded = true
+	if userCache.CompanyId > 0 {
+		if company, err := GetCompanyByID(userCache.CompanyId); err == nil && company != nil {
+			userCache.CompanyName = company.Name
+			userCache.CompanyCode = company.Code
+		}
+	}
+	if userCache.DepartmentId > 0 {
+		if department, err := GetDepartmentByID(userCache.DepartmentId); err == nil && department != nil {
+			userCache.DepartmentName = department.Name
+			userCache.DepartmentPath = department.Path
+			userCache.DepartmentLevel = department.Level
+			if hierarchyBytes, err := common.Marshal(buildDepartmentHierarchy(department)); err == nil {
+				userCache.DepartmentHierarchy = string(hierarchyBytes)
+			}
+			if userCache.CompanyId == 0 {
+				userCache.CompanyId = department.CompanyId
+				userCache.CompanyLoaded = true
+			}
+			if userCache.CompanyName == "" && department.Company.Id > 0 {
+				userCache.CompanyName = department.Company.Name
+				userCache.CompanyCode = department.Company.Code
+			}
+		}
+	}
+}
+
+func buildDepartmentHierarchy(department *Department) []map[string]interface{} {
+	if department == nil {
+		return nil
+	}
+	if strings.TrimSpace(department.Path) == "" {
+		return []map[string]interface{}{{
+			"id":    department.Id,
+			"name":  department.Name,
+			"level": department.Level,
+		}}
+	}
+	parts := strings.Split(strings.Trim(department.Path, "/"), "/")
+	ids := make([]int64, 0, len(parts))
+	for _, part := range parts {
+		id, err := strconv.ParseInt(part, 10, 64)
+		if err == nil && id > 0 {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var departments []Department
+	if err := DB.Where("id IN ?", ids).Find(&departments).Error; err != nil {
+		return nil
+	}
+	byID := make(map[int64]Department, len(departments))
+	for _, item := range departments {
+		byID[item.Id] = item
+	}
+	hierarchy := make([]map[string]interface{}, 0, len(ids))
+	for _, id := range ids {
+		item, ok := byID[id]
+		if !ok {
+			continue
+		}
+		hierarchy = append(hierarchy, map[string]interface{}{
+			"id":    item.Id,
+			"name":  item.Name,
+			"level": item.Level,
+		})
+	}
+	return hierarchy
 }
 
 func cacheGetUserBase(userId int) (*UserBase, error) {

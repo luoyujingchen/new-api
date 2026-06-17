@@ -61,15 +61,16 @@ type User struct {
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:               user.Id,
-		Group:            user.Group,
-		Quota:            user.Quota,
-		Status:           user.Status,
-		Username:         user.Username,
-		Setting:          user.Setting,
-		Email:            user.Email,
-		CompanyLoaded:    true,
-		DepartmentLoaded: true,
+		Id:            user.Id,
+		Group:         user.Group,
+		Quota:         user.Quota,
+		Status:        user.Status,
+		Username:      user.Username,
+		DisplayName:   user.DisplayName,
+		Role:          user.Role,
+		Setting:       user.Setting,
+		Email:         user.Email,
+		CompanyLoaded: true,
 	}
 	if user.CompanyId != nil {
 		cache.CompanyId = *user.CompanyId

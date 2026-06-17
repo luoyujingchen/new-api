@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -154,6 +155,15 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("group", session.Get("group"))
 	c.Set("user_group", session.Get("group"))
 	c.Set("use_access_token", useAccessToken)
+	common.SetContextKey(c, constant.ContextKeyUserId, id)
+	common.SetContextKey(c, constant.ContextKeyUserName, username)
+	if roleInt, ok := role.(int); ok {
+		common.SetContextKey(c, constant.ContextKeyUserRole, roleInt)
+	}
+	if groupStr, ok := session.Get("group").(string); ok {
+		common.SetContextKey(c, constant.ContextKeyUserGroup, groupStr)
+	}
+	model.AttachRequestContextSnapshot(c)
 
 	c.Next()
 }
@@ -408,6 +418,7 @@ func TokenAuth() func(c *gin.Context) {
 		if err != nil {
 			return
 		}
+		model.AttachRequestContextSnapshot(c)
 		c.Next()
 	}
 }
@@ -420,6 +431,8 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	common.SetContextKey(c, constant.ContextKeyTokenId, token.Id)
 	common.SetContextKey(c, constant.ContextKeyTokenKey, token.Key)
 	c.Set("token_name", token.Name)
+	c.Set("token_queue_priority", setting.NormalizeQueuePriority(token.QueuePriority))
+	c.Set("token_queue_timeout", setting.NormalizeQueueTimeoutOption(token.QueueTimeout))
 	if token.ApplicationId != nil {
 		common.SetContextKey(c, constant.ContextKeyApplicationId, int(*token.ApplicationId))
 	}

@@ -23,12 +23,22 @@ import (
 func QueueMiddleware() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		if !setting.QueueEnabled || !common.GetContextKeyBool(c, constant.ContextKeyQueueRequired) {
+			model.SetQueueLogSnapshot(c, model.RequestContextQueue{
+				Required:              false,
+				ModelName:             common.GetContextKeyString(c, constant.ContextKeyQueueModelName),
+				Result:                model.QueueResultBypassed,
+				EstimatedPromptTokens: common.GetContextKeyInt(c, constant.ContextKeyEstimatedTokens),
+			})
 			c.Next()
 			return
 		}
 
 		modelName := common.GetContextKeyString(c, constant.ContextKeyQueueModelName)
 		if modelName == "" {
+			model.SetQueueLogSnapshot(c, model.RequestContextQueue{
+				Required: true,
+				Result:   model.QueueResultError,
+			})
 			abortWithOpenAiMessage(c, http.StatusTooManyRequests, "request queue requires a resolved model name")
 			return
 		}
@@ -36,6 +46,7 @@ func QueueMiddleware() func(c *gin.Context) {
 		queueService := service.GetRequestQueueService()
 		effectiveConfig := queueService.GetEffectiveQueueConfig(modelName)
 		if !effectiveConfig.Enabled {
+			model.SetQueueLogSnapshot(c, buildQueueLogSnapshot(modelName, tokenPriorityFromContext(c), 5, 0, nil, 0, model.QueueResultError, 0, 0, 0, nil))
 			abortWithOpenAiMessage(c, http.StatusTooManyRequests, "queue is disabled for this model")
 			return
 		}
@@ -109,9 +120,11 @@ func QueueMiddleware() func(c *gin.Context) {
 			}
 			var queueFullErr *service.QueueFullError
 			if errors.As(err, &queueFullErr) {
+				model.SetQueueLogSnapshot(c, buildQueueLogSnapshot(modelName, tokenPriority, companyPriority, resolveQueueLogTimeoutSeconds(headerTimeout, tokenTimeout, effectiveConfig.QueueTimeout), longContextTiers, estimatedPromptTokens, model.QueueResultFull, 0, 0, 0, nil))
 				writeQueueError(c, http.StatusTooManyRequests, queueFullErr.Error(), "queue_full")
 				return
 			}
+			model.SetQueueLogSnapshot(c, buildQueueLogSnapshot(modelName, tokenPriority, companyPriority, resolveQueueLogTimeoutSeconds(headerTimeout, tokenTimeout, effectiveConfig.QueueTimeout), longContextTiers, estimatedPromptTokens, model.QueueResultError, 0, 0, 0, nil))
 			abortWithOpenAiMessage(c, http.StatusInternalServerError, "queue_enqueue_failed")
 			return
 		}
@@ -128,6 +141,7 @@ func QueueMiddleware() func(c *gin.Context) {
 			}
 			common.SetContextKey(c, constant.ContextKeyQueueWaitMs, queueWaitMs)
 			queuedRequest.StopWaiting()
+			model.SetQueueLogSnapshot(c, buildQueueLogSnapshot(modelName, tokenPriority, companyPriority, int(queuedRequest.Timeout.Seconds()), longContextTiers, estimatedPromptTokens, model.QueueResultAdmitted, position, queueWaitMs, queuedRequest.Position(), queuedRequest))
 			if retainedLeaseID := queuedRequest.RetainedLeaseID(); retainedLeaseID != "" {
 				defer func() {
 					queueService.FinishLongContextLeaseUse(retainedLeaseID)
@@ -158,6 +172,8 @@ func QueueMiddleware() func(c *gin.Context) {
 				if positionWas <= 0 {
 					positionWas = position
 				}
+				waitMs := time.Since(queuedRequest.EnqueuedAt).Milliseconds()
+				model.SetQueueLogSnapshot(c, buildQueueLogSnapshot(modelName, tokenPriority, companyPriority, int(queuedRequest.Timeout.Seconds()), longContextTiers, estimatedPromptTokens, model.QueueResultTimeout, position, waitMs, positionWas, queuedRequest))
 				message := fmt.Sprintf("request timed out in queue after %ds (model: %s, position was %d)", int(queuedRequest.Timeout.Seconds()), modelName, positionWas)
 				if isStream && c.Writer.Written() {
 					writeQueueStreamError(c, message, "queue_timeout")
@@ -168,6 +184,7 @@ func QueueMiddleware() func(c *gin.Context) {
 				return
 			}
 			if queuedRequest.IsAdminCancelled() {
+				model.SetQueueLogSnapshot(c, buildQueueLogSnapshot(modelName, tokenPriority, companyPriority, int(queuedRequest.Timeout.Seconds()), longContextTiers, estimatedPromptTokens, model.QueueResultError, position, time.Since(queuedRequest.EnqueuedAt).Milliseconds(), queuedRequest.Position(), queuedRequest))
 				message := fmt.Sprintf("request cancelled in queue by administrator (model: %s)", modelName)
 				if isStream && c.Writer.Written() {
 					writeQueueStreamError(c, message, "queue_cancelled")
@@ -177,10 +194,79 @@ func QueueMiddleware() func(c *gin.Context) {
 				writeQueueError(c, http.StatusConflict, message, "queue_cancelled")
 				return
 			}
+			model.SetQueueLogSnapshot(c, buildQueueLogSnapshot(modelName, tokenPriority, companyPriority, int(queuedRequest.Timeout.Seconds()), longContextTiers, estimatedPromptTokens, model.QueueResultError, position, time.Since(queuedRequest.EnqueuedAt).Milliseconds(), queuedRequest.Position(), queuedRequest))
 			c.Abort()
 			return
 		}
 	}
+}
+
+func buildQueueLogSnapshot(modelName string, tokenPriority int, companyPriority int, timeoutSeconds int, tiers []types.QueueLongContextTier, estimatedPromptTokens int, result string, initialPosition int, waitMs int64, currentPosition int, req *service.QueuedRequest) model.RequestContextQueue {
+	effectivePriority := service.CalculateQueuePriority(tokenPriority, companyPriority)
+	if req != nil && req.Priority > 0 {
+		effectivePriority = req.Priority
+	}
+	if currentPosition <= 0 {
+		currentPosition = initialPosition
+	}
+	return model.RequestContextQueue{
+		Required:                true,
+		ModelName:               modelName,
+		PriorityEffective:       effectivePriority,
+		PriorityToken:           setting.NormalizeQueuePriority(tokenPriority),
+		PriorityCompany:         setting.NormalizeQueuePriority(companyPriority),
+		PriorityFormula:         "token + company - 5",
+		PriorityRange:           "1..10",
+		PriorityHigherIsFaster:  true,
+		TimeoutEffectiveSeconds: timeoutSeconds,
+		PositionInitial:         initialPosition,
+		WaitMs:                  waitMs,
+		Result:                  result,
+		EstimatedPromptTokens:   estimatedPromptTokens,
+		MatchedLongContextTier:  highestMatchedLongContextTier(estimatedPromptTokens, tiers),
+	}
+}
+
+func resolveQueueLogTimeoutSeconds(headerTimeout *int, tokenTimeout int, configTimeout int) int {
+	timeoutSeconds := 0
+	if headerTimeout != nil && *headerTimeout > 0 {
+		timeoutSeconds = *headerTimeout
+	} else if tokenTimeout > 0 {
+		timeoutSeconds = tokenTimeout
+	} else if configTimeout > 0 {
+		timeoutSeconds = configTimeout
+	} else {
+		timeoutSeconds = setting.QueueDefaultTimeout
+	}
+	if setting.QueueMaxTimeout > 0 && timeoutSeconds > setting.QueueMaxTimeout {
+		timeoutSeconds = setting.QueueMaxTimeout
+	}
+	if timeoutSeconds <= 0 {
+		return 1
+	}
+	return timeoutSeconds
+}
+
+func highestMatchedLongContextTier(promptTokens int, tiers []types.QueueLongContextTier) int {
+	matched := service.MatchLongContextTiers(promptTokens, tiers)
+	highest := 0
+	for _, tier := range matched {
+		if tier.ThresholdTokens > highest {
+			highest = tier.ThresholdTokens
+		}
+	}
+	return highest
+}
+
+func tokenPriorityFromContext(c *gin.Context) int {
+	if c == nil {
+		return 5
+	}
+	priority := c.GetInt("token_queue_priority")
+	if priority == 0 {
+		return 5
+	}
+	return priority
 }
 
 func loadQueueTokenSettings(tokenID int) (priority int, timeout int) {

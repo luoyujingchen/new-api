@@ -61,6 +61,7 @@ func (s *UserDepartmentService) SetUserDepartment(userId int, companyId *int64, 
 	if result.RowsAffected == 0 {
 		return gorm.ErrRecordNotFound
 	}
+	_ = model.InvalidateUserCache(userId)
 	return nil
 }
 
@@ -77,6 +78,7 @@ func (s *UserDepartmentService) ClearUserDepartment(userId int) error {
 	if result.RowsAffected == 0 {
 		return gorm.ErrRecordNotFound
 	}
+	_ = model.InvalidateUserCache(userId)
 	return nil
 }
 
@@ -154,7 +156,13 @@ func (s *UserDepartmentService) BatchSetUserDepartment(userIds []int, companyId 
 			"department_id": departmentId,
 			"company_id":    dept.CompanyId,
 		}
-		return model.DB.Model(&model.User{}).Where("id IN ?", userIds).Updates(updateData).Error
+		if err := model.DB.Model(&model.User{}).Where("id IN ?", userIds).Updates(updateData).Error; err != nil {
+			return err
+		}
+		for _, userId := range userIds {
+			_ = model.InvalidateUserCache(userId)
+		}
+		return nil
 	}
 
 	// 只设置公司
@@ -167,7 +175,13 @@ func (s *UserDepartmentService) BatchSetUserDepartment(userIds []int, companyId 
 			"company_id":    companyId,
 			"department_id": nil,
 		}
-		return model.DB.Model(&model.User{}).Where("id IN ?", userIds).Updates(updateData).Error
+		if err := model.DB.Model(&model.User{}).Where("id IN ?", userIds).Updates(updateData).Error; err != nil {
+			return err
+		}
+		for _, userId := range userIds {
+			_ = model.InvalidateUserCache(userId)
+		}
+		return nil
 	}
 
 	// 清空公司和部门
@@ -175,7 +189,13 @@ func (s *UserDepartmentService) BatchSetUserDepartment(userIds []int, companyId 
 		"company_id":    nil,
 		"department_id": nil,
 	}
-	return model.DB.Model(&model.User{}).Where("id IN ?", userIds).Updates(updateData).Error
+	if err := model.DB.Model(&model.User{}).Where("id IN ?", userIds).Updates(updateData).Error; err != nil {
+		return err
+	}
+	for _, userId := range userIds {
+		_ = model.InvalidateUserCache(userId)
+	}
+	return nil
 }
 
 // GetUserDepartmentInfo 获取用户的完整部门和公司信息（带关联数据）
