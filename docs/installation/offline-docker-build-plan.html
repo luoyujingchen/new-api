@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>new-api 离线 Docker 镜像构建执行计划</title>
+    <style>
+      :root {
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --text: #18212f;
+        --muted: #5b6575;
+        --border: #d8dde6;
+        --accent: #1267a8;
+        --accent-strong: #0b4f83;
+        --code-bg: #111827;
+        --code-text: #eef2ff;
+        --success: #0f766e;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        line-height: 1.65;
+      }
+
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 36px 20px 64px;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: clamp(28px, 5vw, 42px);
+        line-height: 1.15;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        margin: 34px 0 14px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+        font-size: 24px;
+        letter-spacing: 0;
+      }
+
+      h3 {
+        margin: 24px 0 10px;
+        font-size: 18px;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0 0 12px;
+      }
+
+      ul,
+      ol {
+        margin: 10px 0 16px;
+        padding-left: 24px;
+      }
+
+      li {
+        margin: 6px 0;
+      }
+
+      code {
+        border-radius: 4px;
+        background: #e9edf3;
+        padding: 1px 5px;
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 0.94em;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0 18px;
+        overflow-wrap: anywhere;
+      }
+
+      th,
+      td {
+        border: 1px solid var(--border);
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: #eef2f7;
+        font-weight: 700;
+      }
+
+      header {
+        margin-bottom: 28px;
+      }
+
+      section,
+      .summary-item {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      section {
+        padding: 18px;
+        margin: 18px 0;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin: 24px 0;
+      }
+
+      .summary-item {
+        padding: 16px;
+      }
+
+      .summary-item strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .warning {
+        border-left: 4px solid #b45309;
+        background: #fff7ed;
+        padding: 12px 14px;
+        margin: 14px 0;
+      }
+
+      .note {
+        border-left: 4px solid var(--accent);
+        background: #eef7ff;
+        padding: 12px 14px;
+        margin: 14px 0;
+      }
+
+      .cmd {
+        margin: 14px 0;
+        overflow: hidden;
+        border: 1px solid #263244;
+        border-radius: 8px;
+        background: var(--code-bg);
+      }
+
+      .cmd-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid #263244;
+        background: #1f2937;
+        padding: 8px 10px;
+        color: #cbd5e1;
+        font-size: 13px;
+      }
+
+      .copy-button {
+        min-width: 74px;
+        border: 1px solid #64748b;
+        border-radius: 6px;
+        background: #f8fafc;
+        color: #0f172a;
+        cursor: pointer;
+        font: inherit;
+        font-size: 13px;
+        padding: 5px 10px;
+      }
+
+      .copy-button:hover {
+        border-color: var(--accent);
+        color: var(--accent-strong);
+      }
+
+      .copy-button.copied {
+        border-color: var(--success);
+        color: var(--success);
+      }
+
+      pre {
+        margin: 0;
+        overflow-x: auto;
+        padding: 14px;
+        color: var(--code-text);
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 14px;
+        line-height: 1.55;
+        white-space: pre;
+      }
+
+      pre code {
+        display: block;
+        background: transparent;
+        color: inherit;
+        padding: 0;
+        font-size: inherit;
+      }
+
+      .checklist {
+        list-style: none;
+        padding-left: 0;
+      }
+
+      .checklist li {
+        position: relative;
+        padding-left: 30px;
+      }
+
+      .checklist li::before {
+        position: absolute;
+        left: 0;
+        top: 2px;
+        width: 18px;
+        height: 18px;
+        border: 1px solid var(--accent);
+        border-radius: 4px;
+        content: "";
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      @media (max-width: 760px) {
+        main {
+          padding: 24px 12px 44px;
+        }
+
+        .summary {
+          grid-template-columns: 1fr;
+        }
+
+        section {
+          padding: 14px;
+        }
+
+        th,
+        td {
+          padding: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>离线 Docker 镜像构建执行计划</h1>
+        <p class="muted">
+          适用于机器 A 无网络但有 Docker、机器 B 为 Windows 且有网络但不能安装 Docker/WSL 的场景。
+          B 只打包源码、前端 dist 和可选 Go module 离线缓存；A 使用本地 Docker 镜像完成 Go 编译与最终镜像构建。
+        </p>
+      </header>
+
+      <div class="summary" aria-label="环境摘要">
+        <div class="summary-item">
+          <strong>机器 A</strong>
+          有 Docker，无网络；可以是 Linux，也可以是 Windows Server 2019，但 Docker 必须能构建 Linux 容器镜像。
+        </div>
+        <div class="summary-item">
+          <strong>机器 B</strong>
+          Windows，有网络，不能安装 Docker/WSL，不能作为代理；只运行 Bun/Node 脚本并传输离线包。
+        </div>
+        <div class="summary-item">
+          <strong>目标</strong>
+          A 在无网络条件下，用本地 builder/runtime 镜像、前端 dist 和 Go 离线依赖构建 new-api 镜像。
+        </div>
+      </div>
+
+      <section>
+        <h2>总体策略</h2>
+        <p>
+          不按当前项目 <code>Dockerfile</code> 原样离线构建。原 Dockerfile 会执行
+          <code>bun install</code>、<code>go mod download</code> 和 <code>apt-get</code>，
+          这些步骤都需要网络，不适合机器 A。
+        </p>
+        <p>
+          当前方案使用 <code>scripts/package-offline-inputs.cjs</code> 在 B 上生成离线输入包。
+          包内包含当前源码、<code>web/default/dist</code>、<code>web/classic/dist</code> 占位文件；
+          首次传输或 <code>go.mod</code>/<code>go.sum</code> 变化时，再额外包含 <code>offline/gomodproxy</code>。
+        </p>
+        <p>
+          Go 二进制不在 B 上编译。A 使用 <code>Dockerfile.offline</code>，在本地
+          <code>golang:1.26.1-alpine</code> builder 镜像中编译 Go，再复制到本地 runtime 镜像中。
+        </p>
+        <div class="warning">
+          当前项目的 <code>main.go</code> 同时 embed <code>web/default/dist</code> 和
+          <code>web/classic/dist</code>。classic 前端不需要完整构建，但必须有
+          <code>web/classic/dist/index.html</code> 占位文件。
+        </div>
+      </section>
+
+      <section>
+        <h2>逐步执行计划</h2>
+
+        <h3>1. 在机器 A 准备本地 Docker 镜像</h3>
+        <p>A 无网络，所以 builder、runtime 和生产 Compose 依赖镜像必须提前放到 A 并加载。下面的文件名按实际 tar 文件调整。</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>A / Bash</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>docker load -i golang-1.26.1-alpine-amd64.tar
+docker load -i new-api-runtime-base-bookworm-slim-amd64.tar
+docker load -i redis-7.2-alpine-amd64.tar
+docker load -i postgres-15-alpine-amd64.tar
+docker load -i apache-kafka-3.7.1-amd64.tar
+docker load -i clickhouse-server-24.8-amd64.tar
+
+docker image inspect golang:1.26.1-alpine
+docker image inspect new-api-runtime-base:bookworm-slim-amd64
+docker image inspect redis:7.2-alpine
+docker image inspect postgres:15-alpine
+docker image inspect apache/kafka:3.7.1
+docker image inspect clickhouse/clickhouse-server:24.8</code></pre>
+        </div>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>A / PowerShell</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>docker load -i .\golang-1.26.1-alpine-amd64.tar
+docker load -i .\new-api-runtime-base-bookworm-slim-amd64.tar
+docker load -i .\redis-7.2-alpine-amd64.tar
+docker load -i .\postgres-15-alpine-amd64.tar
+docker load -i .\apache-kafka-3.7.1-amd64.tar
+docker load -i .\clickhouse-server-24.8-amd64.tar
+
+docker image inspect golang:1.26.1-alpine
+docker image inspect new-api-runtime-base:bookworm-slim-amd64
+docker image inspect redis:7.2-alpine
+docker image inspect postgres:15-alpine
+docker image inspect apache/kafka:3.7.1
+docker image inspect clickhouse/clickhouse-server:24.8</code></pre>
+        </div>
+        <p>如果 A 上镜像标签不同，后续 <code>docker build</code> 使用 <code>--build-arg</code> 指定。</p>
+
+        <h3>2. 在机器 B 准备 portable 工具</h3>
+        <p>B 不需要 Docker 或 WSL，只需要这些命令可用。</p>
+        <ul>
+          <li><code>bun</code>：构建 <code>web/default</code> 并运行脚本。</li>
+          <li><code>node</code>：可替代 Bun 来运行脚本，但构建前端仍需要 <code>bun</code>。</li>
+          <li><code>go</code>：仅在使用 <code>--include-go-modules</code> 打包 Go 离线依赖时需要。</li>
+          <li><code>tar</code>：用于生成 <code>.tar.gz</code>，Windows Server 2019 通常自带。</li>
+          <li><code>pscp</code> 或 OpenSSH <code>scp</code>：用于向 A 传输离线包。</li>
+        </ul>
+
+        <h3>3. 首次传输或 Go 依赖变化时，在 B 打包完整输入</h3>
+        <p>当 A 还没有 <code>offline/gomodproxy</code>，或 <code>go.mod</code>/<code>go.sum</code> 发生变化时使用这个命令。</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>B / PowerShell 或 CMD</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>bun scripts/package-offline-inputs.cjs --include-go-modules</code></pre>
+        </div>
+        <p>如果只想用 Node 执行脚本，也可以这样运行；脚本内部仍会调用 <code>bun</code> 构建前端。</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>B / PowerShell 或 CMD</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>node scripts/package-offline-inputs.cjs --include-go-modules</code></pre>
+        </div>
+        <p>产物路径：</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>B / 输出文件</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>.offline\new-api-offline-inputs-with-gomod.tar.gz</code></pre>
+        </div>
+
+        <h3>4. 日常代码或前端变化时，在 B 只打包源码和 dist</h3>
+        <p>如果 <code>go.mod</code> 和 <code>go.sum</code> 没变，A 可以复用之前保存的 <code>gomodproxy</code>。</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>B / PowerShell 或 CMD</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>bun scripts/package-offline-inputs.cjs</code></pre>
+        </div>
+        <p>产物路径：</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>B / 输出文件</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>.offline\new-api-offline-inputs-dist.tar.gz</code></pre>
+        </div>
+
+        <h3>5. 判断是否需要重新传 Go 依赖</h3>
+        <p>在 B 或任意有 Git 的机器上，对比上次 A 构建使用的提交和当前提交。</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>Git</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>git diff --name-only 上次构建提交..当前提交 -- go.mod go.sum</code></pre>
+        </div>
+        <p>没有输出时，只传 <code>new-api-offline-inputs-dist.tar.gz</code>；有输出时，传带 <code>--include-go-modules</code> 的完整包。</p>
+
+        <h3>6. 从机器 B 传输到机器 A</h3>
+        <p>下面以 PuTTY 的 <code>pscp</code> 为例。首次或依赖变化传完整包。</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>B / PowerShell / pscp</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>pscp .\.offline\new-api-offline-inputs-with-gomod.tar.gz user@A:/tmp/</code></pre>
+        </div>
+        <p>日常更新传 dist 包。</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>B / PowerShell / pscp</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>pscp .\.offline\new-api-offline-inputs-dist.tar.gz user@A:/tmp/</code></pre>
+        </div>
+        <p>如果 B 有 OpenSSH 客户端，也可以使用 <code>scp</code>。</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>B / PowerShell / scp</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>scp .\.offline\new-api-offline-inputs-dist.tar.gz user@A:/tmp/</code></pre>
+        </div>
+
+        <h3>7. Linux A：首次或依赖变化时解包并构建</h3>
+        <p>完整包会更新 A 侧持久化的 Go 离线依赖缓存。</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>A / Bash</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>BUILD_DIR="$HOME/new-api-offline-build"
+CACHE_DIR="$HOME/new-api-offline-cache"
+
+rm -rf "$BUILD_DIR"
+mkdir -p "$BUILD_DIR" "$CACHE_DIR"
+tar -xzf /tmp/new-api-offline-inputs-with-gomod.tar.gz -C "$BUILD_DIR"
+cd "$BUILD_DIR"
+
+test -f web/default/dist/index.html
+test -f web/classic/dist/index.html
+test -d offline/gomodproxy
+
+rm -rf "$CACHE_DIR/gomodproxy"
+cp -a offline/gomodproxy "$CACHE_DIR/gomodproxy"
+
+docker build --pull=false --network=none -f Dockerfile.offline -t new-api-local:offline .</code></pre>
+        </div>
+
+        <h3>8. Linux A：日常更新时复用 Go 离线依赖并构建</h3>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>A / Bash</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>BUILD_DIR="$HOME/new-api-offline-build"
+CACHE_DIR="$HOME/new-api-offline-cache"
+
+rm -rf "$BUILD_DIR"
+mkdir -p "$BUILD_DIR"
+tar -xzf /tmp/new-api-offline-inputs-dist.tar.gz -C "$BUILD_DIR"
+cd "$BUILD_DIR"
+
+mkdir -p offline
+cp -a "$CACHE_DIR/gomodproxy" offline/gomodproxy
+
+test -f web/default/dist/index.html
+test -f web/classic/dist/index.html
+test -d offline/gomodproxy
+
+docker build --pull=false --network=none -f Dockerfile.offline -t new-api-local:offline .</code></pre>
+        </div>
+
+        <h3>9. Windows Server 2019 A：首次或依赖变化时解包并构建</h3>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>A / PowerShell</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>$BuildDir = "C:\new-api-offline-build"
+$CacheDir = "C:\new-api-offline-cache"
+
+Remove-Item $BuildDir -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $BuildDir | Out-Null
+New-Item -ItemType Directory -Force $CacheDir | Out-Null
+tar -xzf C:\Temp\new-api-offline-inputs-with-gomod.tar.gz -C $BuildDir
+Set-Location $BuildDir
+
+Test-Path .\web\default\dist\index.html
+Test-Path .\web\classic\dist\index.html
+Test-Path .\offline\gomodproxy
+
+Remove-Item "$CacheDir\gomodproxy" -Recurse -Force -ErrorAction SilentlyContinue
+Copy-Item .\offline\gomodproxy "$CacheDir\gomodproxy" -Recurse -Force
+
+docker build --pull=false --network=none -f Dockerfile.offline -t new-api-local:offline .</code></pre>
+        </div>
+
+        <h3>10. Windows Server 2019 A：日常更新时复用 Go 离线依赖并构建</h3>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>A / PowerShell</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>$BuildDir = "C:\new-api-offline-build"
+$CacheDir = "C:\new-api-offline-cache"
+
+Remove-Item $BuildDir -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $BuildDir | Out-Null
+tar -xzf C:\Temp\new-api-offline-inputs-dist.tar.gz -C $BuildDir
+Set-Location $BuildDir
+
+New-Item -ItemType Directory -Force .\offline | Out-Null
+Copy-Item "$CacheDir\gomodproxy" .\offline\gomodproxy -Recurse -Force
+
+Test-Path .\web\default\dist\index.html
+Test-Path .\web\classic\dist\index.html
+Test-Path .\offline\gomodproxy
+
+docker build --pull=false --network=none -f Dockerfile.offline -t new-api-local:offline .</code></pre>
+        </div>
+
+        <h3>11. 镜像标签不同时的构建命令</h3>
+        <p>如果 A 上 builder 或 runtime 镜像不是默认标签，使用 build args。</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>A / Bash 或 PowerShell</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>docker build --pull=false --network=none --build-arg GO_BUILDER_IMAGE=your-go-builder:tag --build-arg RUNTIME_IMAGE=your-runtime:tag -f Dockerfile.offline -t new-api-local:offline .</code></pre>
+        </div>
+
+        <h3>12. 在机器 A 启动生产离线 Compose 验证</h3>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>A / Bash 或 PowerShell</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>docker compose -f docker-compose.prod-offline.yml up -d</code></pre>
+        </div>
+        <p>另开终端执行基础访问检查。</p>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>A / Bash</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>curl -I http://127.0.0.1:3000</code></pre>
+        </div>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>A / PowerShell</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>Invoke-WebRequest -Method Head http://127.0.0.1:3000</code></pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>验收标准</h2>
+        <ul class="checklist">
+          <li>B 上脚本能生成 <code>.offline/new-api-offline-inputs-with-gomod.tar.gz</code> 或 <code>.offline/new-api-offline-inputs-dist.tar.gz</code>。</li>
+          <li>B 上生成的包包含 <code>web/default/dist/index.html</code>。</li>
+          <li>B 上生成的包包含 <code>web/classic/dist/index.html</code> 占位文件。</li>
+          <li>首次包或依赖变化包包含 <code>offline/gomodproxy</code>。</li>
+          <li>A 上已加载 <code>golang:1.26.1-alpine</code>、runtime 镜像和生产 Compose 依赖镜像，或构建时显式传入对应 <code>--build-arg</code>。</li>
+          <li>A 上 <code>docker build --pull=false --network=none -f Dockerfile.offline -t new-api-local:offline .</code> 成功完成。</li>
+          <li>A 上构建过程中没有任何需要联网的步骤。</li>
+          <li>Go 编译发生在 A 的 Docker builder 镜像中，B 不需要产出 <code>new-api</code> 二进制。</li>
+          <li>A 上 <code>docker images</code> 能看到 <code>new-api-local:offline</code>。</li>
+          <li>A 上 <code>docker compose -f docker-compose.prod-offline.yml up -d</code> 能启动应用、Postgres、Redis、Kafka 和 ClickHouse。</li>
+          <li>容器启动时不出现 <code>exec format error</code>、<code>no such file or directory</code> 或权限错误。</li>
+          <li>访问 <code>http://A机器IP:3000</code> 能打开前端页面。</li>
+          <li><code>curl -I http://127.0.0.1:3000</code> 或 PowerShell <code>Invoke-WebRequest</code> 能返回 HTTP 响应。</li>
+        </ul>
+
+        <h3>验收命令</h3>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>B / PowerShell 或 CMD</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>tar -tzf .\.offline\new-api-offline-inputs-with-gomod.tar.gz | findstr /C:"web/default/dist/index.html" /C:"web/classic/dist/index.html" /C:"offline/gomodproxy"</code></pre>
+        </div>
+        <div class="cmd">
+          <div class="cmd-head">
+            <span>A / Bash</span>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <pre><code>cd "$HOME/new-api-offline-build"
+test -f web/default/dist/index.html
+test -f web/classic/dist/index.html
+test -d offline/gomodproxy
+docker image inspect new-api-local:offline
+docker compose -f docker-compose.prod-offline.yml up -d
+docker compose -f docker-compose.prod-offline.yml ps
+curl -I http://127.0.0.1:3000</code></pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>常见失败判断</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>现象</th>
+              <th>高概率原因</th>
+              <th>处理方式</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>no matching manifest</code> 或 Windows 镜像相关错误</td>
+              <td>A 的 Docker 当前不能构建 Linux 容器镜像，或处于 Windows container 模式。</td>
+              <td>切换到 Linux container 支持的 Docker 环境；本项目最终镜像是 Linux 镜像。</td>
+            </tr>
+            <tr>
+              <td><code>go: module lookup disabled by GOPROXY=off</code></td>
+              <td><code>offline/gomodproxy</code> 缺模块，通常是 <code>go.mod</code>/<code>go.sum</code> 变了但只传了 dist 包。</td>
+              <td>在 B 上重新执行 <code>bun scripts/package-offline-inputs.cjs --include-go-modules</code> 并传完整包。</td>
+            </tr>
+            <tr>
+              <td>Go 编译时报 embed 缺文件</td>
+              <td><code>web/default/dist</code> 或 <code>web/classic/dist</code> 缺失。</td>
+              <td>重新运行 B 侧脚本；classic 只需要占位 <code>index.html</code>。</td>
+            </tr>
+            <tr>
+              <td>A 上 Docker build 尝试联网</td>
+              <td>使用了原始 Dockerfile，或未使用 <code>--network=none</code> 检查隐藏联网步骤。</td>
+              <td>改用 <code>Dockerfile.offline</code>，并保留 <code>--pull=false --network=none</code>。</td>
+            </tr>
+            <tr>
+              <td><code>pull access denied</code> 或找不到 builder/runtime 镜像</td>
+              <td>A 本地没有加载对应镜像，或镜像标签和 Dockerfile 默认值不一致。</td>
+              <td>先 <code>docker load</code>，或通过 <code>--build-arg GO_BUILDER_IMAGE=...</code> 和 <code>--build-arg RUNTIME_IMAGE=...</code> 指定本地标签。</td>
+            </tr>
+            <tr>
+              <td>HTTPS 请求证书失败</td>
+              <td>runtime 镜像缺 CA 证书。</td>
+              <td>使用预装 <code>ca-certificates</code> 的 runtime 镜像，例如 <code>new-api-runtime-base:bookworm-slim-amd64</code>。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+
+    <script>
+      function copyText(text, button) {
+        if (navigator.clipboard && window.isSecureContext) {
+          return navigator.clipboard.writeText(text);
+        }
+
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+
+        try {
+          document.execCommand("copy");
+          return Promise.resolve();
+        } catch (error) {
+          return Promise.reject(error);
+        } finally {
+          document.body.removeChild(textarea);
+        }
+      }
+
+      document.querySelectorAll(".cmd").forEach((block) => {
+        const button = block.querySelector(".copy-button");
+        const code = block.querySelector("pre code");
+
+        button.addEventListener("click", () => {
+          copyText(code.textContent, button)
+            .then(() => {
+              button.textContent = "已复制";
+              button.classList.add("copied");
+              window.setTimeout(() => {
+                button.textContent = "复制";
+                button.classList.remove("copied");
+              }, 1400);
+            })
+            .catch(() => {
+              button.textContent = "复制失败";
+              window.setTimeout(() => {
+                button.textContent = "复制";
+              }, 1600);
+            });
+        });
+      });
+    </script>
+  </body>
+</html>
