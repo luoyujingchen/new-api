@@ -265,6 +265,7 @@ func migrateDB() error {
 		&Redemption{},
 		&Ability{},
 		&Log{},
+		&LogOutbox{},
 		&Midjourney{},
 		&TopUp{},
 		&QuotaData{},
@@ -288,6 +289,9 @@ func migrateDB() error {
 		&OrganizationRateLimit{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := migrateLogOutboxPayloadJSON(DB); err != nil {
 		return err
 	}
 	if err := BackfillOrganizationRateLimitModelNames(); err != nil {
@@ -322,6 +326,7 @@ func migrateDBFast() error {
 		{&Redemption{}, "Redemption"},
 		{&Ability{}, "Ability"},
 		{&Log{}, "Log"},
+		{&LogOutbox{}, "LogOutbox"},
 		{&Midjourney{}, "Midjourney"},
 		{&TopUp{}, "TopUp"},
 		{&QuotaData{}, "QuotaData"},
@@ -367,6 +372,9 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := migrateLogOutboxPayloadJSON(DB); err != nil {
+		return err
+	}
 	if err := BackfillOrganizationRateLimitModelNames(); err != nil {
 		return err
 	}
@@ -385,9 +393,58 @@ func migrateDBFast() error {
 
 func migrateLOGDB() error {
 	var err error
-	if err = LOG_DB.AutoMigrate(&Log{}); err != nil {
+	if err = LOG_DB.AutoMigrate(&Log{}, &LogOutbox{}); err != nil {
 		return err
 	}
+	if err = migrateLogOutboxPayloadJSON(LOG_DB); err != nil {
+		return err
+	}
+	return nil
+}
+
+func migrateLogOutboxPayloadJSON(db *gorm.DB) error {
+	if db == nil || db.Dialector == nil {
+		return nil
+	}
+	tableName := "log_outboxes"
+	columnName := "payload_json"
+	if !db.Migrator().HasTable(tableName) || !db.Migrator().HasColumn(&LogOutbox{}, columnName) {
+		return nil
+	}
+
+	var alterSQL string
+	switch db.Dialector.Name() {
+	case "mysql":
+		var columnType string
+		if err := db.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
+				WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
+			tableName, columnName).Scan(&columnType).Error; err != nil {
+			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
+		} else if strings.ToLower(columnType) == "longtext" {
+			return nil
+		}
+		alterSQL = fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s LONGTEXT NOT NULL", tableName, columnName)
+	case "postgres":
+		var dataType string
+		if err := db.Raw(`SELECT data_type FROM information_schema.columns
+			WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`,
+			tableName, columnName).Scan(&dataType).Error; err != nil {
+			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
+		} else if dataType == "text" {
+			return nil
+		}
+		alterSQL = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE text", tableName, columnName)
+	default:
+		return nil
+	}
+
+	if alterSQL == "" {
+		return nil
+	}
+	if err := db.Exec(alterSQL).Error; err != nil {
+		return fmt.Errorf("failed to migrate %s.%s to large text: %w", tableName, columnName, err)
+	}
+	common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to large text", tableName, columnName))
 	return nil
 }
 

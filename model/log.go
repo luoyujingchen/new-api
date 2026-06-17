@@ -108,7 +108,9 @@ func RecordLog(userId int, logType int, content string) {
 	err := LOG_DB.Create(log).Error
 	if err != nil {
 		common.SysLog("failed to record log: " + err.Error())
+		return
 	}
+	enqueueLogOutboxAfterCreate(log, nil)
 }
 
 // RecordLogWithAdminInfo 记录操作日志，并将管理员相关信息存入 Other.admin_info，
@@ -132,7 +134,9 @@ func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo m
 	}
 	if err := LOG_DB.Create(log).Error; err != nil {
 		common.SysLog("failed to record log: " + err.Error())
+		return
 	}
+	enqueueLogOutboxAfterCreate(log, nil)
 }
 
 func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
@@ -160,7 +164,9 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 	err := LOG_DB.Create(log).Error
 	if err != nil {
 		common.SysLog("failed to record topup log: " + err.Error())
+		return
 	}
+	enqueueLogOutboxAfterCreate(log, nil)
 }
 
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
@@ -170,14 +176,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	other = appendQueueWaitInfo(c, other)
-	otherStr := common.MapToJsonStr(other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
+	needRecordIp := ShouldRecordRequestIP(c)
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -202,12 +201,21 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 		}(),
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
-		Other:             otherStr,
 	}
+	other = MergeRequestContextIntoOther(c, log, other)
+	log.Other = common.MapToJsonStr(other)
 	err := LOG_DB.Create(log).Error
 	if err != nil {
 		logger.LogError(c, "failed to record log: "+err.Error())
+		return
 	}
+	payload, hasPayload := GetUsageLogPayload(c)
+	if hasPayload {
+		enqueueLogOutboxAfterCreate(log, &payload)
+	} else {
+		enqueueLogOutboxAfterCreate(log, nil)
+	}
+	setUsageLogOutboxEventContext(c, log)
 }
 
 type RecordConsumeLogParams struct {
@@ -234,14 +242,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	params.Other = appendQueueWaitInfo(c, params.Other)
-	otherStr := common.MapToJsonStr(params.Other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
+	needRecordIp := ShouldRecordRequestIP(c)
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -266,12 +267,21 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		}(),
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
-		Other:             otherStr,
 	}
+	other := MergeRequestContextIntoOther(c, log, params.Other)
+	log.Other = common.MapToJsonStr(other)
 	err := LOG_DB.Create(log).Error
 	if err != nil {
 		logger.LogError(c, "failed to record log: "+err.Error())
+		return
 	}
+	payload, hasPayload := GetUsageLogPayload(c)
+	if hasPayload {
+		enqueueLogOutboxAfterCreate(log, &payload)
+	} else {
+		enqueueLogOutboxAfterCreate(log, nil)
+	}
+	setUsageLogOutboxEventContext(c, log)
 	if common.DataExportEnabled {
 		gopool.Go(func() {
 			LogQuotaData(userId, username, params.ModelName, params.Quota, common.GetTimestamp(), params.PromptTokens+params.CompletionTokens)
@@ -280,15 +290,16 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 }
 
 type RecordTaskBillingLogParams struct {
-	UserId    int
-	LogType   int
-	Content   string
-	ChannelId int
-	ModelName string
-	Quota     int
-	TokenId   int
-	Group     string
-	Other     map[string]interface{}
+	UserId         int
+	LogType        int
+	Content        string
+	ChannelId      int
+	ModelName      string
+	Quota          int
+	TokenId        int
+	Group          string
+	Other          map[string]interface{}
+	RequestContext *RequestContextSnapshot
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
@@ -302,6 +313,13 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 			tokenName = token.Name
 		}
 	}
+	other := params.Other
+	if other == nil {
+		other = make(map[string]interface{})
+	}
+	if params.RequestContext != nil {
+		other["request_context"] = *params.RequestContext
+	}
 	log := &Log{
 		UserId:    params.UserId,
 		Username:  username,
@@ -314,12 +332,46 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		ChannelId: params.ChannelId,
 		TokenId:   params.TokenId,
 		Group:     params.Group,
-		Other:     common.MapToJsonStr(params.Other),
+		Other:     common.MapToJsonStr(other),
 	}
 	err := LOG_DB.Create(log).Error
 	if err != nil {
 		common.SysLog("failed to record task billing log: " + err.Error())
+		return
 	}
+	enqueueLogOutboxAfterCreate(log, nil)
+}
+
+func enqueueLogOutboxAfterCreate(log *Log, payload *UsageLogPayload) {
+	if log == nil {
+		return
+	}
+	if shouldEnqueueUsageLogOutbox(log.Type) {
+		if err := EnqueueUsageLogOutbox(log, payload); err != nil {
+			common.SysLog("failed to enqueue usage log outbox: " + err.Error())
+		}
+		return
+	}
+	if shouldEnqueueAuditLogOutbox(log.Type) {
+		if err := EnqueueAuditLogOutbox(log); err != nil {
+			common.SysLog("failed to enqueue audit log outbox: " + err.Error())
+		}
+	}
+}
+
+func shouldEnqueueUsageLogOutbox(logType int) bool {
+	return logType == LogTypeConsume || logType == LogTypeError || logType == LogTypeRefund
+}
+
+func shouldEnqueueAuditLogOutbox(logType int) bool {
+	return logType == LogTypeManage
+}
+
+func setUsageLogOutboxEventContext(c *gin.Context, log *Log) {
+	if c == nil || log == nil || log.Id == 0 || !shouldEnqueueUsageLogOutbox(log.Type) {
+		return
+	}
+	common.SetContextKey(c, constant.ContextKeyUsageLogOutboxEventID, stableLogEventID(LogOutboxEventTypeUsage, log.Id))
 }
 
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, queueStatus string) (logs []*Log, total int64, err error) {
@@ -608,6 +660,9 @@ func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelNa
 
 func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64, error) {
 	var total int64 = 0
+	if limit <= 0 {
+		limit = 1000
+	}
 
 	for {
 		if nil != ctx.Err() {
@@ -626,5 +681,34 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 		}
 	}
 
+	if err := deleteOldLogOutboxes(ctx, targetTimestamp, limit); err != nil {
+		return total, err
+	}
+
 	return total, nil
+}
+
+func deleteOldLogOutboxes(ctx context.Context, targetTimestamp int64, limit int) error {
+	for {
+		if nil != ctx.Err() {
+			return ctx.Err()
+		}
+		var ids []int64
+		if err := LOG_DB.Model(&LogOutbox{}).
+			Where("created_at < ?", targetTimestamp).
+			Order("id asc").
+			Limit(limit).
+			Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		if err := LOG_DB.Where("id IN ?", ids).Delete(&LogOutbox{}).Error; err != nil {
+			return err
+		}
+		if len(ids) < limit {
+			return nil
+		}
+	}
 }

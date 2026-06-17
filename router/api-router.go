@@ -308,9 +308,18 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
 		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
 		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), controller.GetChannelAffinityUsageCacheStats)
+		logRoute.GET("/outbox/stats", middleware.AdminAuth(), controller.GetLogOutboxStats)
+		logRoute.GET("/outbox/consistency", middleware.AdminAuth(), controller.ValidateLogOutboxConsistency)
+		logRoute.POST("/outbox/replay", middleware.RootAuth(), controller.ReplayLogOutbox)
 		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
 		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
+
+		auditRoute := apiRouter.Group("/audit")
+		auditRoute.Use(middleware.AdminAuth())
+		{
+			auditRoute.POST("/event", controller.RecordExternalAuditEvent)
+		}
 
 		dataRoute := apiRouter.Group("/data")
 		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)
