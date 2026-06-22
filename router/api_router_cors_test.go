@@ -18,7 +18,7 @@ func TestSetApiRouterHandlesUserSelfPreflight(t *testing.T) {
 	request := httptest.NewRequest(http.MethodOptions, "/api/user/self", nil)
 	request.Header.Set("Origin", "https://frontend.example.com")
 	request.Header.Set("Access-Control-Request-Method", http.MethodGet)
-	request.Header.Set("Access-Control-Request-Headers", "new-api-user,content-type,cache-control")
+	request.Header.Set("Access-Control-Request-Headers", "content-type,cache-control,x-requested-with")
 
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
@@ -26,5 +26,5 @@ func TestSetApiRouterHandlesUserSelfPreflight(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, recorder.Code)
 	require.Equal(t, "https://frontend.example.com", recorder.Header().Get("Access-Control-Allow-Origin"))
 	require.Equal(t, "true", recorder.Header().Get("Access-Control-Allow-Credentials"))
-	require.Contains(t, strings.ToLower(recorder.Header().Get("Access-Control-Allow-Headers")), "new-api-user")
+	require.Contains(t, strings.ToLower(recorder.Header().Get("Access-Control-Allow-Headers")), "x-requested-with")
 }

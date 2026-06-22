@@ -9,7 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const corsDefaultAllowHeaders = "Origin,Content-Length,Content-Type,Accept,Authorization,New-Api-User,Cache-Control,X-Requested-With"
+const (
+	corsDefaultAllowHeaders = "Origin,Content-Length,Content-Type,Accept,Authorization,Cache-Control,X-Requested-With"
+	corsDefaultAllowMethods = "GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD"
+)
 
 func CORS() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -30,7 +33,7 @@ func CORS() gin.HandlerFunc {
 		header.Add("Vary", "Origin")
 
 		if c.Request.Method == http.MethodOptions {
-			header.Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+			header.Set("Access-Control-Allow-Methods", corsDefaultAllowMethods)
 			header.Set("Access-Control-Allow-Headers", requestedCORSHeaders(c))
 			header.Add("Vary", "Access-Control-Request-Method")
 			header.Add("Vary", "Access-Control-Request-Headers")
