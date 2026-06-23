@@ -41,7 +41,7 @@ import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
-import { useCustomOAuthProviders } from './custom-oauth/hooks/use-custom-oauth-providers'
+import type { CustomOAuthProvider } from './custom-oauth/types'
 
 const defaultSSOSchema = z.object({
   defaultProvider: z.string(),
@@ -56,6 +56,8 @@ type DefaultSSOSectionProps = {
     'oidc.client_id': string
     'oidc.authorization_endpoint': string
   }
+  customProviders?: CustomOAuthProvider[]
+  customProvidersLoading?: boolean
 }
 
 type ProviderOption = {
@@ -64,10 +66,13 @@ type ProviderOption = {
   disabled?: boolean
 }
 
-export function DefaultSSOSection({ defaultValues }: DefaultSSOSectionProps) {
+export function DefaultSSOSection({
+  defaultValues,
+  customProviders = [],
+  customProvidersLoading = false,
+}: DefaultSSOSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
-  const { data: customProviders = [], isLoading } = useCustomOAuthProviders()
 
   const normalizedDefaults: DefaultSSOFormValues = {
     defaultProvider: defaultValues['sso.default_provider'] ?? '',
@@ -170,7 +175,7 @@ export function DefaultSSOSection({ defaultValues }: DefaultSSOSectionProps) {
                       className='w-full sm:w-80'
                       value={field.value}
                       onChange={field.onChange}
-                      disabled={isLoading}
+                      disabled={customProvidersLoading}
                     >
                       {providerOptions.map((option) => (
                         <NativeSelectOption

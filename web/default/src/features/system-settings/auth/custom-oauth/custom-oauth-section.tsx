@@ -63,7 +63,11 @@ export function CustomOAuthSection({
   if (isLoading) {
     return (
       <>
-        <DefaultSSOSection defaultValues={defaultSSOValues} />
+        <DefaultSSOSection
+          defaultValues={defaultSSOValues}
+          customProviders={providers}
+          customProvidersLoading={isLoading}
+        />
         <SettingsSection
           title={t('Custom OAuth Providers')}
           description={t(
@@ -80,7 +84,11 @@ export function CustomOAuthSection({
 
   return (
     <>
-      <DefaultSSOSection defaultValues={defaultSSOValues} />
+      <DefaultSSOSection
+        defaultValues={defaultSSOValues}
+        customProviders={providers}
+        customProvidersLoading={isLoading}
+      />
 
       <SettingsSection
         title={t('Custom OAuth Providers')}
