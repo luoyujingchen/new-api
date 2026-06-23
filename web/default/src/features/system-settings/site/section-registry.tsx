@@ -46,6 +46,13 @@ const SITE_SECTIONS = [
           About: settings.About,
           HomePageContent: settings.HomePageContent,
           ServerAddress: settings.ServerAddress,
+          session_cookie: {
+            same_site: settings['session_cookie.same_site'] as
+              | 'strict'
+              | 'lax'
+              | 'none',
+            secure: settings['session_cookie.secure'],
+          },
           legal: {
             user_agreement: settings['legal.user_agreement'],
             privacy_policy: settings['legal.privacy_policy'],

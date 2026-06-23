@@ -237,17 +237,21 @@ const (
 
 // Setting related messages
 const (
-	MsgSettingInvalidType      = "setting.invalid_type"
-	MsgSettingWebhookEmpty     = "setting.webhook_empty"
-	MsgSettingWebhookInvalid   = "setting.webhook_invalid"
-	MsgSettingEmailInvalid     = "setting.email_invalid"
-	MsgSettingBarkUrlEmpty     = "setting.bark_url_empty"
-	MsgSettingBarkUrlInvalid   = "setting.bark_url_invalid"
-	MsgSettingGotifyUrlEmpty   = "setting.gotify_url_empty"
-	MsgSettingGotifyTokenEmpty = "setting.gotify_token_empty"
-	MsgSettingGotifyUrlInvalid = "setting.gotify_url_invalid"
-	MsgSettingUrlMustHttp      = "setting.url_must_http"
-	MsgSettingSaved            = "setting.saved"
+	MsgSettingInvalidType                     = "setting.invalid_type"
+	MsgSettingWebhookEmpty                    = "setting.webhook_empty"
+	MsgSettingWebhookInvalid                  = "setting.webhook_invalid"
+	MsgSettingEmailInvalid                    = "setting.email_invalid"
+	MsgSettingBarkUrlEmpty                    = "setting.bark_url_empty"
+	MsgSettingBarkUrlInvalid                  = "setting.bark_url_invalid"
+	MsgSettingGotifyUrlEmpty                  = "setting.gotify_url_empty"
+	MsgSettingGotifyTokenEmpty                = "setting.gotify_token_empty"
+	MsgSettingGotifyUrlInvalid                = "setting.gotify_url_invalid"
+	MsgSettingUrlMustHttp                     = "setting.url_must_http"
+	MsgSettingSaved                           = "setting.saved"
+	MsgSettingDefaultSSOOIDCInvalid           = "setting.default_sso_oidc_invalid"
+	MsgSettingDefaultSSOProviderInvalid       = "setting.default_sso_provider_invalid"
+	MsgSettingSessionCookieSameSiteInvalid    = "setting.session_cookie_same_site_invalid"
+	MsgSettingSessionCookieSecureValueInvalid = "setting.session_cookie_secure_value_invalid"
 )
 
 // Deployment related messages (io.net)

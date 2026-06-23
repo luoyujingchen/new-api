@@ -210,6 +210,10 @@ setting.gotify_token_empty: "Gotify token cannot be empty"
 setting.gotify_url_invalid: "Invalid Gotify server URL"
 setting.url_must_http: "URL must start with http:// or https://"
 setting.saved: "Settings updated"
+setting.default_sso_oidc_invalid: "Default SSO provider OIDC is not enabled or is incomplete"
+setting.default_sso_provider_invalid: "Default SSO provider does not exist or is not enabled"
+setting.session_cookie_same_site_invalid: "Invalid Session Cookie SameSite value. Valid values: strict, lax, none"
+setting.session_cookie_secure_value_invalid: "Invalid Session Cookie Secure value"
 
 # Deployment messages (io.net)
 deployment.not_enabled: "io.net model deployment is not enabled or API key is missing"

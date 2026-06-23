@@ -32,6 +32,8 @@ const defaultSiteSettings: SiteSettings = {
   About: '',
   HomePageContent: '',
   ServerAddress: '',
+  'session_cookie.same_site': 'strict',
+  'session_cookie.secure': false,
   'legal.user_agreement': '',
   'legal.privacy_policy': '',
   HeaderNavModules: '',

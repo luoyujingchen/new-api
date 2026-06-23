@@ -65,6 +65,8 @@ export type SiteSettings = {
   About: string
   HomePageContent: string
   ServerAddress: string
+  'session_cookie.same_site': string
+  'session_cookie.secure': boolean
   'legal.user_agreement': string
   'legal.privacy_policy': string
   HeaderNavModules: string

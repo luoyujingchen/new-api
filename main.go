@@ -25,6 +25,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-contrib/sessions"
@@ -179,12 +180,13 @@ func main() {
 	middleware.SetUpLogger(server)
 	// Initialize session store
 	store := cookie.NewStore([]byte(common.SessionSecret))
+	sessionCookieOptions := buildSessionCookieOptions(system_setting.GetSessionCookieSettings())
 	store.Options(sessions.Options{
 		Path:     "/",
 		MaxAge:   2592000, // 30 days
 		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteStrictMode,
+		Secure:   sessionCookieOptions.Secure,
+		SameSite: sessionCookieOptions.SameSite,
 	})
 	server.Use(sessions.Sessions("session", store))
 
@@ -209,6 +211,35 @@ func main() {
 	err = server.Run(":" + port)
 	if err != nil {
 		common.FatalLog("failed to start HTTP server: " + err.Error())
+	}
+}
+
+type sessionCookieOptions struct {
+	Secure   bool
+	SameSite http.SameSite
+}
+
+func buildSessionCookieOptions(settings *system_setting.SessionCookieSettings) sessionCookieOptions {
+	sameSite := resolveSessionSameSite(settings.SameSite)
+	secure := settings.Secure
+	if sameSite == http.SameSiteNoneMode {
+		secure = true
+	}
+
+	return sessionCookieOptions{
+		Secure:   secure,
+		SameSite: sameSite,
+	}
+}
+
+func resolveSessionSameSite(value string) http.SameSite {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "none":
+		return http.SameSiteNoneMode
+	case "lax":
+		return http.SameSiteLaxMode
+	default:
+		return http.SameSiteStrictMode
 	}
 }
 

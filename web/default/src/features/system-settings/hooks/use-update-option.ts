@@ -25,6 +25,7 @@ import type { UpdateOptionRequest } from '../types'
 // Configuration keys that require status refresh
 const STATUS_RELATED_KEYS = [
   'theme.frontend',
+  'ServerAddress',
   'HeaderNavModules',
   'SidebarModulesAdmin',
   'Notice',
@@ -57,7 +58,6 @@ export function useUpdateOption() {
           if (typeof window !== 'undefined') {
             window.localStorage.removeItem('status')
           }
-          queryClient.setQueryData(['status'], null)
           queryClient.invalidateQueries({ queryKey: ['status'] })
         }
 

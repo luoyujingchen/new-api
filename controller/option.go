@@ -85,23 +85,36 @@ func buildCompletionRatioMetaValue(optionValues map[string]string) string {
 	return string(jsonBytes)
 }
 
-func validateDefaultSSOProvider(providerName string) error {
+func validateDefaultSSOProvider(providerName string) string {
 	providerName = strings.TrimSpace(providerName)
 	if providerName == "" {
-		return nil
+		return ""
 	}
 	if providerName == "oidc" {
 		oidcSettings := system_setting.GetOIDCSettings()
 		if !oidcSettings.Enabled || oidcSettings.ClientId == "" || oidcSettings.AuthorizationEndpoint == "" {
-			return fmt.Errorf("默认 SSO Provider OIDC 未启用或配置不完整")
+			return i18n.MsgSettingDefaultSSOOIDCInvalid
 		}
-		return nil
+		return ""
 	}
 	provider := oauth.GetProvider(providerName)
 	if provider == nil || !oauth.IsCustomProvider(providerName) || !provider.IsEnabled() {
-		return fmt.Errorf("默认 SSO Provider 不存在或未启用")
+		return i18n.MsgSettingDefaultSSOProviderInvalid
 	}
-	return nil
+	return ""
+}
+
+func normalizeSessionCookieSameSite(value string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "strict":
+		return "strict", true
+	case "lax":
+		return "lax", true
+	case "none":
+		return "none", true
+	default:
+		return "", false
+	}
 }
 
 func GetOptions(c *gin.Context) {
@@ -216,11 +229,20 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "sso.default_provider":
 		option.Value = strings.TrimSpace(option.Value.(string))
-		if err := validateDefaultSSOProvider(option.Value.(string)); err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+		if msgKey := validateDefaultSSOProvider(option.Value.(string)); msgKey != "" {
+			common.ApiErrorI18n(c, msgKey)
+			return
+		}
+	case "session_cookie.same_site":
+		normalized, ok := normalizeSessionCookieSameSite(option.Value.(string))
+		if !ok {
+			common.ApiErrorI18n(c, i18n.MsgSettingSessionCookieSameSiteInvalid)
+			return
+		}
+		option.Value = normalized
+	case "session_cookie.secure":
+		if option.Value != "true" && option.Value != "false" {
+			common.ApiErrorI18n(c, i18n.MsgSettingSessionCookieSecureValueInvalid)
 			return
 		}
 	case "LinuxDOOAuthEnabled":

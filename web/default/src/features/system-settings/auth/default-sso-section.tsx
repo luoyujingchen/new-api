@@ -16,8 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import * as z from 'zod'
 import { useMemo } from 'react'
+import * as z from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { RotateCcw } from 'lucide-react'
@@ -33,10 +33,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from '@/components/ui/native-select'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
 import { SettingsSection } from '../components/settings-section'
@@ -68,7 +65,7 @@ type ProviderOption = {
   disabled?: boolean
 }
 
-const defaultSSOValues: DefaultSSOValues = {
+const emptyDefaultSSOValues: DefaultSSOValues = {
   'sso.default_provider': '',
   'oidc.enabled': false,
   'oidc.client_id': '',
@@ -84,7 +81,7 @@ export function DefaultSSOSection({
   const updateOption = useUpdateOption()
   const resolvedDefaultValues = useMemo(
     () => ({
-      ...defaultSSOValues,
+      ...emptyDefaultSSOValues,
       ...defaultValues,
     }),
     [defaultValues]
@@ -100,9 +97,7 @@ export function DefaultSSOSection({
   })
 
   const providerOptions = useMemo<ProviderOption[]>(() => {
-    const options: ProviderOption[] = [
-      { value: '', label: t('Disabled') },
-    ]
+    const options: ProviderOption[] = [{ value: '', label: t('Disabled') }]
 
     if (
       resolvedDefaultValues['oidc.enabled'] &&
@@ -120,7 +115,9 @@ export function DefaultSSOSection({
 
     if (
       normalizedDefaults.defaultProvider &&
-      !options.some((option) => option.value === normalizedDefaults.defaultProvider)
+      !options.some(
+        (option) => option.value === normalizedDefaults.defaultProvider
+      )
     ) {
       options.push({
         value: normalizedDefaults.defaultProvider,
@@ -202,7 +199,7 @@ export function DefaultSSOSection({
                     >
                       {providerOptions.map((option) => (
                         <NativeSelectOption
-                          key={option.value || 'disabled'}
+                          key={option.value === '' ? 'disabled' : option.value}
                           value={option.value}
                           disabled={option.disabled}
                         >

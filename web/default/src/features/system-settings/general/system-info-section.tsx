@@ -40,6 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
@@ -53,6 +54,10 @@ const _systemInfoSchema = z.object({
   }),
   SystemName: z.string().min(1),
   ServerAddress: z.string().optional(),
+  session_cookie: z.object({
+    same_site: z.enum(['strict', 'lax', 'none']),
+    secure: z.boolean(),
+  }),
   Logo: z.string().url().optional().or(z.literal('')),
   Footer: z.string().optional(),
   About: z.string().optional(),
@@ -74,9 +79,22 @@ function normalizeValue(value: unknown): string {
   return typeof value === 'string' ? value : String(value)
 }
 
+function normalizeSameSite(value: unknown): 'strict' | 'lax' | 'none' {
+  if (value === 'lax' || value === 'none') return value
+  return 'strict'
+}
+
+function normalizeBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') return value
+  return value === 'true'
+}
+
 export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const normalizedSessionCookieSameSite = normalizeSameSite(
+    defaultValues.session_cookie?.same_site
+  )
 
   const normalizedDefaults: SystemInfoFormValues = {
     theme: {
@@ -85,6 +103,12 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     },
     SystemName: normalizeValue(defaultValues.SystemName),
     ServerAddress: normalizeValue(defaultValues.ServerAddress),
+    session_cookie: {
+      same_site: normalizedSessionCookieSameSite,
+      secure:
+        normalizedSessionCookieSameSite === 'none' ||
+        normalizeBoolean(defaultValues.session_cookie?.secure),
+    },
     Logo: normalizeValue(defaultValues.Logo),
     Footer: normalizeValue(defaultValues.Footer),
     About: normalizeValue(defaultValues.About),
@@ -103,6 +127,10 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
       error: () => t('System name is required'),
     }),
     ServerAddress: z.string().optional(),
+    session_cookie: z.object({
+      same_site: z.enum(['strict', 'lax', 'none']),
+      secure: z.boolean(),
+    }),
     Logo: z.string().url().optional().or(z.literal('')),
     Footer: z.string().optional(),
     About: z.string().optional(),
@@ -134,6 +162,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
         }
       },
     })
+  const sessionCookieSameSite = form.watch('session_cookie.same_site')
 
   return (
     <>
@@ -220,10 +249,104 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                       'The public URL of your server, used for OAuth callbacks, webhooks, and other external integrations'
                     )}
                   </FormDescription>
+                  <FormDescription>
+                    {t(
+                      'For cross-domain IDaaS deployments, set this to the exact child application origin registered as the IDaaS redirect URI.'
+                    )}
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            <div className='space-y-4 rounded-lg border p-4'>
+              <div className='space-y-1'>
+                <h4 className='text-sm font-medium'>{t('Session Cookie')}</h4>
+                <p className='text-muted-foreground text-sm'>
+                  {t(
+                    'Configure dashboard session cookie behavior for cross-domain deployments'
+                  )}
+                </p>
+              </div>
+
+              <FormField
+                control={form.control}
+                name='session_cookie.same_site'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Session Cookie SameSite')}</FormLabel>
+                    <Select
+                      items={[
+                        { value: 'strict', label: t('Strict') },
+                        { value: 'lax', label: t('Lax') },
+                        { value: 'none', label: t('None') },
+                      ]}
+                      onValueChange={(value) => {
+                        field.onChange(value)
+                        if (value === 'none') {
+                          form.setValue('session_cookie.secure', true, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
+                        }
+                      }}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger className='w-full sm:w-80'>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectGroup>
+                          <SelectItem value='strict'>{t('Strict')}</SelectItem>
+                          <SelectItem value='lax'>{t('Lax')}</SelectItem>
+                          <SelectItem value='none'>{t('None')}</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      {t(
+                        'Controls how browsers send the dashboard session cookie. Use None for cross-domain or embedded deployments.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='session_cookie.secure'
+                render={({ field }) => (
+                  <FormItem className='flex flex-row items-center justify-between gap-4 rounded-lg border p-4'>
+                    <div className='space-y-0.5'>
+                      <FormLabel className='text-base'>
+                        {t('Session Cookie Secure')}
+                      </FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Send the session cookie only over HTTPS. SameSite=None is always sent as Secure and requires HTTPS.'
+                        )}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={sessionCookieSameSite === 'none'}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <p className='text-muted-foreground text-sm'>
+                {t(
+                  'Changing session cookie settings requires a server restart to affect new Set-Cookie headers.'
+                )}
+              </p>
+            </div>
 
             <FormField
               control={form.control}

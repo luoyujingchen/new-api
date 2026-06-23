@@ -58,27 +58,25 @@ export function CustomOAuthSection({
     }
   }
 
-  if (isLoading) {
-    return (
-      <>
-        <DefaultSSOSection
-          defaultValues={defaultSSOValues}
-          customProviders={providers}
-          customProvidersLoading={isLoading}
-        />
-        <SettingsSection
-          title={t('Custom OAuth Providers')}
-          description={t(
-            'Configure custom OAuth providers for user authentication'
-          )}
-        >
-          <div className='text-muted-foreground py-8 text-center text-sm'>
-            {t('Loading...')}
-          </div>
-        </SettingsSection>
-      </>
-    )
-  }
+  const providerContent = isLoading ? (
+    <div className='text-muted-foreground py-8 text-center text-sm'>
+      {t('Loading...')}
+    </div>
+  ) : (
+    <>
+      <ProviderTable
+        providers={providers}
+        onEdit={handleEdit}
+        onCreate={handleCreate}
+      />
+
+      <ProviderFormDialog
+        open={dialogOpen}
+        onOpenChange={handleDialogChange}
+        provider={editingProvider}
+      />
+    </>
+  )
 
   return (
     <>
@@ -94,17 +92,7 @@ export function CustomOAuthSection({
           'Configure custom OAuth providers for user authentication'
         )}
       >
-        <ProviderTable
-          providers={providers}
-          onEdit={handleEdit}
-          onCreate={handleCreate}
-        />
-
-        <ProviderFormDialog
-          open={dialogOpen}
-          onOpenChange={handleDialogChange}
-          provider={editingProvider}
-        />
+        {providerContent}
       </SettingsSection>
     </>
   )

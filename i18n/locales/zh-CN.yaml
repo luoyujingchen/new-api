@@ -211,6 +211,10 @@ setting.gotify_token_empty: "Gotify令牌不能为空"
 setting.gotify_url_invalid: "无效的Gotify服务器地址"
 setting.url_must_http: "URL必须以http://或https://开头"
 setting.saved: "设置已更新"
+setting.default_sso_oidc_invalid: "默认 SSO Provider OIDC 未启用或配置不完整"
+setting.default_sso_provider_invalid: "默认 SSO Provider 不存在或未启用"
+setting.session_cookie_same_site_invalid: "无效的 Session Cookie SameSite 值，可选值：strict、lax、none"
+setting.session_cookie_secure_value_invalid: "无效的 Session Cookie Secure 值"
 
 # Deployment messages (io.net)
 deployment.not_enabled: "io.net 模型部署功能未启用或 API 密钥缺失"
