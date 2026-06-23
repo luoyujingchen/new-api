@@ -32,13 +32,14 @@ export function buildGitHubOAuthUrl(clientId: string, state: string): string {
 /**
  * Build Discord OAuth URL
  */
-export function buildDiscordOAuthUrl(clientId: string, state: string): string {
+export function buildDiscordOAuthUrl(
+  clientId: string,
+  state: string,
+  redirectBase = window.location.origin
+): string {
   const url = new URL('https://discord.com/oauth2/authorize')
   url.searchParams.set('client_id', clientId)
-  url.searchParams.set(
-    'redirect_uri',
-    `${window.location.origin}/oauth/discord`
-  )
+  url.searchParams.set('redirect_uri', `${redirectBase}/oauth/discord`)
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('scope', 'identify+openid')
   url.searchParams.set('state', state)
@@ -51,11 +52,12 @@ export function buildDiscordOAuthUrl(clientId: string, state: string): string {
 export function buildOIDCOAuthUrl(
   authUrl: string,
   clientId: string,
-  state: string
+  state: string,
+  redirectBase = window.location.origin
 ): string {
   const url = new URL(authUrl)
   url.searchParams.set('client_id', clientId)
-  url.searchParams.set('redirect_uri', `${window.location.origin}/oauth/oidc`)
+  url.searchParams.set('redirect_uri', `${redirectBase}/oauth/oidc`)
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('scope', 'openid profile email')
   url.searchParams.set('state', state)

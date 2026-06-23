@@ -36,6 +36,19 @@ type LogoutRequestConfig = AxiosRequestConfig & {
   skipErrorHandler?: boolean
 }
 
+function normalizeRedirectBase(value: unknown): string {
+  return typeof value === 'string' ? value.trim().replace(/\/+$/, '') : ''
+}
+
+// When the app runs inside an iframe sandbox (e.g. wujie micro-frontend),
+// navigating the iframe itself to a cross-origin OAuth provider breaks the
+// sandbox and the parent frame raises a SecurityError when it tries to read
+// back the iframe's window. In that case, navigate the top-level browsing
+// context so the OAuth round-trip stays on the configured redirect origin.
+function getOAuthWindowTarget(): '_top' | '_self' {
+  return window.parent !== window ? '_top' : '_self'
+}
+
 /**
  * Hook for managing OAuth login
  */
@@ -70,6 +83,19 @@ export function useOAuthLogin(status: SystemStatus | null) {
     } catch (_error) {
       // ignore logout errors
     }
+  }
+
+  const getOAuthRedirectBase = () => {
+    const configuredBase =
+      normalizeRedirectBase(status?.server_address) ||
+      normalizeRedirectBase(status?.data?.server_address)
+    if (
+      configuredBase.startsWith('https://') ||
+      configuredBase.startsWith('http://')
+    ) {
+      return configuredBase
+    }
+    return window.location.origin
   }
 
   const handleGitHubLogin = async (redirectTo?: string) => {
@@ -108,7 +134,7 @@ export function useOAuthLogin(status: SystemStatus | null) {
 
       saveOAuthRedirectTarget(redirectTo)
       const url = buildGitHubOAuthUrl(status.github_client_id, state)
-      window.open(url, '_self')
+      window.open(url, getOAuthWindowTarget())
     } catch (_error) {
       toast.error(t('Failed to start GitHub login'))
       if (githubTimeoutRef.current) {
@@ -133,8 +159,12 @@ export function useOAuthLogin(status: SystemStatus | null) {
       }
 
       saveOAuthRedirectTarget(redirectTo)
-      const url = buildDiscordOAuthUrl(status.discord_client_id, state)
-      window.open(url, '_self')
+      const url = buildDiscordOAuthUrl(
+        status.discord_client_id,
+        state,
+        getOAuthRedirectBase()
+      )
+      window.open(url, getOAuthWindowTarget())
     } catch (_error) {
       toast.error(t('Failed to start Discord login'))
     } finally {
@@ -158,9 +188,10 @@ export function useOAuthLogin(status: SystemStatus | null) {
       const url = buildOIDCOAuthUrl(
         status.oidc_authorization_endpoint,
         status.oidc_client_id,
-        state
+        state,
+        getOAuthRedirectBase()
       )
-      window.open(url, '_self')
+      window.open(url, getOAuthWindowTarget())
     } catch (_error) {
       toast.error(t('Failed to start OIDC login'))
     } finally {
@@ -182,7 +213,7 @@ export function useOAuthLogin(status: SystemStatus | null) {
 
       saveOAuthRedirectTarget(redirectTo)
       const url = buildLinuxDOOAuthUrl(status.linuxdo_client_id, state)
-      window.open(url, '_self')
+      window.open(url, getOAuthWindowTarget())
     } catch (_error) {
       toast.error(t('Failed to start LinuxDO login'))
     } finally {
@@ -210,7 +241,7 @@ export function useOAuthLogin(status: SystemStatus | null) {
       }
 
       saveOAuthRedirectTarget(redirectTo)
-      const redirectUri = `${window.location.origin}/oauth/${provider.slug}`
+      const redirectUri = `${getOAuthRedirectBase()}/oauth/${provider.slug}`
       const url = new URL(provider.authorization_endpoint)
       url.searchParams.set('client_id', provider.client_id)
       url.searchParams.set('redirect_uri', redirectUri)
@@ -220,7 +251,7 @@ export function useOAuthLogin(status: SystemStatus | null) {
         url.searchParams.set('scope', provider.scopes)
       }
 
-      window.open(url.toString(), '_self')
+      window.open(url.toString(), getOAuthWindowTarget())
     } catch (_error) {
       toast.error(
         t('Failed to start {{provider}} login', { provider: provider.name })
