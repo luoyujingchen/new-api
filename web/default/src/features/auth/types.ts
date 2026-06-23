@@ -103,6 +103,7 @@ export interface SystemStatus {
     linuxdo_client_id?: string
     telegram_oauth?: boolean
     passkey_login?: boolean
+    sso_default_provider?: string
     wechat_login?: boolean
     wechat_qrcode?: string
     wechat_qr_code?: string
@@ -145,6 +146,7 @@ export interface SystemStatus {
   linuxdo_client_id?: string
   telegram_oauth?: boolean
   passkey_login?: boolean
+  sso_default_provider?: string
   wechat_login?: boolean
   wechat_qrcode?: string
   wechat_qr_code?: string
@@ -201,4 +203,5 @@ export interface CustomOAuthProviderInfo {
 
 export interface AuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
   redirectTo?: string
+  ssoFallback?: boolean
 }

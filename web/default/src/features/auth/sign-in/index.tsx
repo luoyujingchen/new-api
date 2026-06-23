@@ -25,8 +25,10 @@ import { UserAuthForm } from './components/user-auth-form'
 
 export function SignIn() {
   const { t } = useTranslation()
-  const { redirect } = useSearch({ from: '/(auth)/sign-in' })
+  const { redirect, sso_fallback } = useSearch({ from: '/(auth)/sign-in' })
   const { status } = useStatus()
+  const ssoFallback =
+    sso_fallback === true || sso_fallback === '1' || sso_fallback === 'true'
 
   return (
     <AuthLayout>
@@ -49,7 +51,7 @@ export function SignIn() {
           )}
         </div>
 
-        <UserAuthForm redirectTo={redirect} />
+        <UserAuthForm redirectTo={redirect} ssoFallback={ssoFallback} />
 
         <TermsFooter
           variant='sign-in'

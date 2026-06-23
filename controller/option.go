@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/oauth"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -82,6 +83,25 @@ func buildCompletionRatioMetaValue(optionValues map[string]string) string {
 		return "{}"
 	}
 	return string(jsonBytes)
+}
+
+func validateDefaultSSOProvider(providerName string) error {
+	providerName = strings.TrimSpace(providerName)
+	if providerName == "" {
+		return nil
+	}
+	if providerName == "oidc" {
+		oidcSettings := system_setting.GetOIDCSettings()
+		if !oidcSettings.Enabled || oidcSettings.ClientId == "" || oidcSettings.AuthorizationEndpoint == "" {
+			return fmt.Errorf("默认 SSO Provider OIDC 未启用或配置不完整")
+		}
+		return nil
+	}
+	provider := oauth.GetProvider(providerName)
+	if provider == nil || !oauth.IsCustomProvider(providerName) || !provider.IsEnabled() {
+		return fmt.Errorf("默认 SSO Provider 不存在或未启用")
+	}
+	return nil
 }
 
 func GetOptions(c *gin.Context) {
@@ -180,6 +200,15 @@ func UpdateOption(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "无法启用 OIDC 登录，请先填入 OIDC Client Id 以及 OIDC Client Secret！",
+			})
+			return
+		}
+	case "sso.default_provider":
+		option.Value = strings.TrimSpace(option.Value.(string))
+		if err := validateDefaultSSOProvider(option.Value.(string)); err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
 			})
 			return
 		}

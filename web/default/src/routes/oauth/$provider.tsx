@@ -30,6 +30,10 @@ import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 import { api, getSelf } from '@/lib/api'
 import { OAuthCallbackScreen } from '@/features/auth/components/oauth-callback-screen'
 import { OAUTH_BIND_STORAGE_KEY } from '@/features/auth/constants'
+import {
+  consumeOAuthRedirectTarget,
+  normalizeRedirectTarget,
+} from '@/features/auth/lib/oauth-redirect'
 
 type OAuthRequestConfig = AxiosRequestConfig & {
   skipBusinessError?: boolean
@@ -77,9 +81,21 @@ function OAuthCallback() {
         }
       }
 
+      const getRedirectTarget = () =>
+        normalizeRedirectTarget(search?.redirect) ?? consumeOAuthRedirectTarget()
+
+      const buildFallbackSignInPath = () => {
+        const params = new URLSearchParams({ sso_fallback: '1' })
+        const redirectTarget = getRedirectTarget()
+        if (redirectTarget) {
+          params.set('redirect', redirectTarget)
+        }
+        return `/sign-in?${params.toString()}`
+      }
+
       if (!search?.code) {
         toast.error(i18next.t('Missing code'))
-        safeNavigate('/sign-in')
+        safeNavigate(buildFallbackSignInPath())
         return
       }
       const isBindingFlow =
@@ -143,7 +159,11 @@ function OAuthCallback() {
       }
 
       const redirectAfterLogin = (target?: string) => {
-        const to = target || search?.redirect || '/dashboard'
+        const to =
+          normalizeRedirectTarget(target) ??
+          normalizeRedirectTarget(search?.redirect) ??
+          consumeOAuthRedirectTarget() ??
+          '/dashboard'
         safeNavigate(to)
         toast.success(i18next.t('Signed in successfully!'))
       }
@@ -159,7 +179,7 @@ function OAuthCallback() {
           return
         }
         toast.error(message)
-        safeNavigate('/sign-in')
+        safeNavigate(buildFallbackSignInPath())
       }
 
       try {

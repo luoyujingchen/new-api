@@ -23,6 +23,7 @@ import { SignIn } from '@/features/auth/sign-in'
 
 const searchSchema = z.object({
   redirect: z.string().optional(),
+  sso_fallback: z.union([z.string(), z.boolean()]).optional(),
 })
 
 export const Route = createFileRoute('/(auth)/sign-in')({

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   IconDiscord,
@@ -33,26 +33,42 @@ type OAuthProvidersProps = {
   status: SystemStatus | null
   disabled?: boolean
   className?: string
+  redirectTo?: string
+  autoStartProvider?: string
+  autoStartDisabled?: boolean
+  hideButtons?: boolean
+  onAutoStart?: () => void
   onWeChatLogin?: () => void
   isWeChatLoading?: boolean
 }
 
 type ProviderButton = {
   key: string
+  autoStartValue: string
   label: string
   onClick: () => void
   icon?: ReactNode
   disabled?: boolean
 }
 
+function normalizeAutoStartProvider(provider?: string): string {
+  return provider?.trim().replace(/^custom:/, '') ?? ''
+}
+
 export function OAuthProviders({
   status,
   disabled = false,
   className,
+  redirectTo,
+  autoStartProvider,
+  autoStartDisabled = false,
+  hideButtons = false,
+  onAutoStart,
   onWeChatLogin,
   isWeChatLoading = false,
 }: OAuthProvidersProps) {
   const { t } = useTranslation()
+  const autoStartedProviderRef = useRef('')
   const {
     isLoading,
     githubButtonText,
@@ -70,6 +86,7 @@ export function OAuthProviders({
   if (status?.wechat_login && onWeChatLogin) {
     providerButtons.push({
       key: 'wechat',
+      autoStartValue: 'wechat',
       label: t('Continue with WeChat'),
       onClick: onWeChatLogin,
       icon: <IconWeChat className='h-4 w-4' />,
@@ -80,8 +97,9 @@ export function OAuthProviders({
   if (status?.github_oauth) {
     providerButtons.push({
       key: 'github',
+      autoStartValue: 'github',
       label: githubButtonText || t('Continue with GitHub'),
-      onClick: handleGitHubLogin,
+      onClick: () => handleGitHubLogin(redirectTo),
       icon: <IconGithub className='h-4 w-4' />,
       disabled: githubButtonDisabled,
     })
@@ -90,8 +108,9 @@ export function OAuthProviders({
   if (status?.discord_oauth) {
     providerButtons.push({
       key: 'discord',
+      autoStartValue: 'discord',
       label: t('Continue with Discord'),
-      onClick: handleDiscordLogin,
+      onClick: () => handleDiscordLogin(redirectTo),
       icon: <IconDiscord className='h-4 w-4' />,
     })
   }
@@ -99,16 +118,18 @@ export function OAuthProviders({
   if (status?.oidc_enabled) {
     providerButtons.push({
       key: 'oidc',
+      autoStartValue: 'oidc',
       label: t('Continue with OIDC'),
-      onClick: handleOIDCLogin,
+      onClick: () => handleOIDCLogin(redirectTo),
     })
   }
 
   if (status?.linuxdo_oauth) {
     providerButtons.push({
       key: 'linuxdo',
+      autoStartValue: 'linuxdo',
       label: t('Continue with LinuxDO'),
-      onClick: handleLinuxDOLogin,
+      onClick: () => handleLinuxDOLogin(redirectTo),
       icon: <IconLinuxDo className='h-4 w-4' />,
     })
   }
@@ -116,6 +137,7 @@ export function OAuthProviders({
   if (status?.telegram_oauth) {
     providerButtons.push({
       key: 'telegram',
+      autoStartValue: 'telegram',
       label: t('Continue with Telegram'),
       onClick: handleTelegramLogin,
     })
@@ -127,13 +149,46 @@ export function OAuthProviders({
     for (const provider of customProviders) {
       providerButtons.push({
         key: `custom-${provider.slug}`,
+        autoStartValue: provider.slug,
         label: t('Continue with {{name}}', { name: provider.name }),
-        onClick: () => handleCustomOAuthLogin(provider),
+        onClick: () => handleCustomOAuthLogin(provider, redirectTo),
       })
     }
   }
 
+  const normalizedAutoStartProvider =
+    normalizeAutoStartProvider(autoStartProvider)
+  const autoStartButton = providerButtons.find(
+    (button) => button.autoStartValue === normalizedAutoStartProvider
+  )
+
+  useEffect(() => {
+    if (
+      !normalizedAutoStartProvider ||
+      autoStartDisabled ||
+      disabled ||
+      isLoading ||
+      autoStartedProviderRef.current === normalizedAutoStartProvider ||
+      !autoStartButton ||
+      autoStartButton.disabled
+    ) {
+      return
+    }
+
+    autoStartedProviderRef.current = normalizedAutoStartProvider
+    onAutoStart?.()
+    autoStartButton.onClick()
+  }, [
+    autoStartButton,
+    autoStartDisabled,
+    disabled,
+    isLoading,
+    normalizedAutoStartProvider,
+    onAutoStart,
+  ])
+
   if (providerButtons.length === 0) return null
+  if (hideButtons) return null
 
   return (
     <div className={cn('space-y-3', className)}>

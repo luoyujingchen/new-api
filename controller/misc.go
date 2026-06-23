@@ -115,6 +115,7 @@ func GetStatus(c *gin.Context) {
 		"passkey_allow_insecure":      passkeySetting.AllowInsecureOrigin,
 		"passkey_user_verification":   passkeySetting.UserVerification,
 		"passkey_attachment":          passkeySetting.AttachmentPreference,
+		"sso_default_provider":        system_setting.GetSSOSettings().DefaultProvider,
 		"setup":                       constant.Setup,
 		"user_agreement_enabled":      legalSetting.UserAgreement != "",
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",

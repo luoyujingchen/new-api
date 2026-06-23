@@ -21,6 +21,7 @@ import { createSectionRegistry } from '../utils/section-registry'
 import { BasicAuthSection } from './basic-auth-section'
 import { BotProtectionSection } from './bot-protection-section'
 import { CustomOAuthSection } from './custom-oauth/custom-oauth-section'
+import { DefaultSSOSection } from './default-sso-section'
 import { OAuthSection } from './oauth-section'
 import { PasskeySection } from './passkey-section'
 
@@ -75,6 +76,23 @@ const AUTH_SECTIONS = [
           WeChatServerAddress: settings.WeChatServerAddress,
           WeChatServerToken: settings.WeChatServerToken,
           WeChatAccountQRCodeImageURL: settings.WeChatAccountQRCodeImageURL,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'default-sso',
+    titleKey: 'Default SSO',
+    descriptionKey:
+      'Automatically start an SSO provider for unauthenticated users',
+    build: (settings: AuthSettings) => (
+      <DefaultSSOSection
+        defaultValues={{
+          'sso.default_provider': settings['sso.default_provider'],
+          'oidc.enabled': settings['oidc.enabled'],
+          'oidc.client_id': settings['oidc.client_id'],
+          'oidc.authorization_endpoint':
+            settings['oidc.authorization_endpoint'],
         }}
       />
     ),

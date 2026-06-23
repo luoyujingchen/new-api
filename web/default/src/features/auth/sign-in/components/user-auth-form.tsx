@@ -64,6 +64,7 @@ import type { AuthFormProps } from '@/features/auth/types'
 export function UserAuthForm({
   className,
   redirectTo,
+  ssoFallback = false,
   ...props
 }: AuthFormProps) {
   const { t } = useTranslation()
@@ -74,6 +75,7 @@ export function UserAuthForm({
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false)
   const [isWeChatDialogOpen, setIsWeChatDialogOpen] = useState(false)
   const [isWeChatSubmitting, setIsWeChatSubmitting] = useState(false)
+  const [showPasswordForm, setShowPasswordForm] = useState(false)
   const legalConsentErrorMessage = t('Please agree to the legal terms first')
   const loginFailedMessage = t('Login failed')
 
@@ -98,6 +100,34 @@ export function UserAuthForm({
     !passkeySupported ||
     (requiresLegalConsent && !agreedToLegal)
   const hasWeChatLogin = Boolean(status?.wechat_login)
+  const defaultSSOProvider = (
+    (typeof status?.sso_default_provider === 'string'
+      ? status.sso_default_provider
+      : undefined) ??
+    (typeof status?.data?.sso_default_provider === 'string'
+      ? status.data.sso_default_provider
+      : '')
+  ).trim()
+  const customOAuthProviders =
+    status?.custom_oauth_providers ?? status?.data?.custom_oauth_providers ?? []
+  const defaultSSOProviderAvailable =
+    defaultSSOProvider === 'oidc'
+      ? Boolean(
+          (status?.oidc_enabled ?? status?.data?.oidc_enabled) &&
+            (status?.oidc_client_id ?? status?.data?.oidc_client_id) &&
+            (status?.oidc_authorization_endpoint ??
+              status?.data?.oidc_authorization_endpoint)
+        )
+      : customOAuthProviders.some(
+          (provider) => provider.slug === defaultSSOProvider
+        )
+  const shouldShowDefaultSSO =
+    defaultSSOProvider !== '' &&
+    defaultSSOProviderAvailable &&
+    !showPasswordForm
+  const shouldAutoStartDefaultSSO = shouldShowDefaultSSO && !ssoFallback
+  const defaultSSOBlockedByLegal =
+    shouldAutoStartDefaultSSO && requiresLegalConsent && !agreedToLegal
 
   useEffect(() => {
     if (requiresLegalConsent) {
@@ -282,103 +312,161 @@ export function UserAuthForm({
         className={cn('grid gap-4', className)}
         {...props}
       >
-        {/* Username Field */}
-        <FormField
-          control={form.control}
-          name='username'
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Username or Email')}</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder={t('Enter your username or email')}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {shouldShowDefaultSSO ? (
+          <div className='grid gap-4'>
+            <div className='text-muted-foreground flex items-center justify-center gap-2 text-sm'>
+              {shouldAutoStartDefaultSSO && !defaultSSOBlockedByLegal && (
+                <Loader2 className='h-4 w-4 animate-spin' />
+              )}
+              <span>
+                {ssoFallback
+                  ? t('Single sign-on was not completed')
+                  : defaultSSOBlockedByLegal
+                    ? t(
+                        'Agree to the legal terms to continue with single sign-on.'
+                      )
+                    : t('Redirecting to single sign-on...')}
+              </span>
+            </div>
 
-        {/* Password Field */}
-        <FormField
-          control={form.control}
-          name='password'
-          render={({ field }) => (
-            <FormItem className='relative'>
-              <FormLabel>{t('Password')}</FormLabel>
-              <FormControl>
-                <PasswordInput placeholder={t('Enter password')} {...field} />
-              </FormControl>
-              <FormMessage />
-              <Link
-                to='/forgot-password'
-                className='text-muted-foreground absolute end-0 -top-0.5 z-10 text-sm font-medium hover:opacity-75'
-              >
-                {t('Forgot password?')}
-              </Link>
-            </FormItem>
-          )}
-        />
+            {shouldAutoStartDefaultSSO && (
+              <LegalConsent
+                status={status}
+                checked={agreedToLegal}
+                onCheckedChange={setAgreedToLegal}
+              />
+            )}
 
-        {/* Submit Button */}
-        <Button
-          type='submit'
-          className='mt-2 w-full justify-center gap-2'
-          disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
-        >
-          {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
-          {t('Sign in')}
-        </Button>
+            {shouldAutoStartDefaultSSO && (
+              <OAuthProviders
+                status={status}
+                disabled={defaultSSOBlockedByLegal}
+                redirectTo={redirectTo}
+                autoStartProvider={defaultSSOProvider}
+                autoStartDisabled={defaultSSOBlockedByLegal}
+                hideButtons={!defaultSSOBlockedByLegal}
+                onWeChatLogin={
+                  hasWeChatLogin ? handleOpenWeChatDialog : undefined
+                }
+                isWeChatLoading={isWeChatSubmitting}
+              />
+            )}
 
-        {/* Turnstile */}
-        {isTurnstileEnabled && (
-          <div className='mt-2'>
-            <Turnstile
-              siteKey={turnstileSiteKey}
-              onVerify={setTurnstileToken}
-            />
-          </div>
-        )}
-
-        <LegalConsent
-          status={status}
-          checked={agreedToLegal}
-          onCheckedChange={setAgreedToLegal}
-          className='mt-1'
-        />
-
-        {passkeyLoginEnabled && (
-          <div className='mt-2 space-y-1'>
             <Button
               type='button'
-              variant='outline'
-              disabled={passkeyButtonDisabled}
-              onClick={handlePasskeyLogin}
-              className='h-11 w-full justify-center gap-2 rounded-lg'
+              variant='link'
+              size='sm'
+              onClick={() => setShowPasswordForm(true)}
+              className='mx-auto h-auto px-0 py-0 text-xs'
             >
-              {isPasskeyLoading ? (
-                <Loader2 className='h-4 w-4 animate-spin' />
-              ) : (
-                <KeyRound className='h-4 w-4' />
-              )}
-              {t('Sign in with Passkey')}
+              {t('Sign in with username and password')}
             </Button>
-            {!passkeySupported && (
-              <p className='text-muted-foreground text-xs'>
-                {t('Passkey is not supported on this device.')}
-              </p>
-            )}
           </div>
-        )}
+        ) : (
+          <>
+            {/* Username Field */}
+            <FormField
+              control={form.control}
+              name='username'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Username or Email')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder={t('Enter your username or email')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-        {/* OAuth Providers */}
-        <OAuthProviders
-          status={status}
-          disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
-          onWeChatLogin={hasWeChatLogin ? handleOpenWeChatDialog : undefined}
-          isWeChatLoading={isWeChatSubmitting}
-        />
+            {/* Password Field */}
+            <FormField
+              control={form.control}
+              name='password'
+              render={({ field }) => (
+                <FormItem className='relative'>
+                  <FormLabel>{t('Password')}</FormLabel>
+                  <FormControl>
+                    <PasswordInput
+                      placeholder={t('Enter password')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                  <Link
+                    to='/forgot-password'
+                    className='text-muted-foreground absolute end-0 -top-0.5 z-10 text-sm font-medium hover:opacity-75'
+                  >
+                    {t('Forgot password?')}
+                  </Link>
+                </FormItem>
+              )}
+            />
+
+            {/* Submit Button */}
+            <Button
+              type='submit'
+              className='mt-2 w-full justify-center gap-2'
+              disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
+            >
+              {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
+              {t('Sign in')}
+            </Button>
+
+            {/* Turnstile */}
+            {isTurnstileEnabled && (
+              <div className='mt-2'>
+                <Turnstile
+                  siteKey={turnstileSiteKey}
+                  onVerify={setTurnstileToken}
+                />
+              </div>
+            )}
+
+            <LegalConsent
+              status={status}
+              checked={agreedToLegal}
+              onCheckedChange={setAgreedToLegal}
+              className='mt-1'
+            />
+
+            {passkeyLoginEnabled && (
+              <div className='mt-2 space-y-1'>
+                <Button
+                  type='button'
+                  variant='outline'
+                  disabled={passkeyButtonDisabled}
+                  onClick={handlePasskeyLogin}
+                  className='h-11 w-full justify-center gap-2 rounded-lg'
+                >
+                  {isPasskeyLoading ? (
+                    <Loader2 className='h-4 w-4 animate-spin' />
+                  ) : (
+                    <KeyRound className='h-4 w-4' />
+                  )}
+                  {t('Sign in with Passkey')}
+                </Button>
+                {!passkeySupported && (
+                  <p className='text-muted-foreground text-xs'>
+                    {t('Passkey is not supported on this device.')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* OAuth Providers */}
+            <OAuthProviders
+              status={status}
+              disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
+              redirectTo={redirectTo}
+              onWeChatLogin={hasWeChatLogin ? handleOpenWeChatDialog : undefined}
+              isWeChatLoading={isWeChatSubmitting}
+            />
+          </>
+        )}
       </form>
 
       {hasWeChatLogin && (
