@@ -54,6 +54,9 @@ export function useUpdateOption() {
 
         // If updating frontend-display-related config, also refresh status
         if (STATUS_RELATED_KEYS.includes(variables.key)) {
+          if (typeof window !== 'undefined') {
+            window.localStorage.removeItem('status')
+          }
           queryClient.invalidateQueries({ queryKey: ['status'] })
         }
 

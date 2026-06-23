@@ -28,7 +28,10 @@ export function SignIn() {
   const { redirect, sso_fallback } = useSearch({ from: '/(auth)/sign-in' })
   const { status } = useStatus()
   const ssoFallback =
-    sso_fallback === true || sso_fallback === '1' || sso_fallback === 'true'
+    sso_fallback === true ||
+    sso_fallback === 1 ||
+    sso_fallback === '1' ||
+    sso_fallback === 'true'
 
   return (
     <AuthLayout>

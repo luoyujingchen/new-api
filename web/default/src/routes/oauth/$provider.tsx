@@ -85,7 +85,7 @@ function OAuthCallback() {
         normalizeRedirectTarget(search?.redirect) ?? consumeOAuthRedirectTarget()
 
       const buildFallbackSignInPath = () => {
-        const params = new URLSearchParams({ sso_fallback: '1' })
+        const params = new URLSearchParams({ sso_fallback: 'true' })
         const redirectTarget = getRedirectTarget()
         if (redirectTarget) {
           params.set('redirect', redirectTarget)
