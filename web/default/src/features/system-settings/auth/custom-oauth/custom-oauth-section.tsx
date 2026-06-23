@@ -19,19 +19,17 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingsSection } from '../../components/settings-section'
-import { DefaultSSOSection } from '../default-sso-section'
+import {
+  DefaultSSOSection,
+  type DefaultSSOValues,
+} from '../default-sso-section'
 import { ProviderFormDialog } from './components/provider-form-dialog'
 import { ProviderTable } from './components/provider-table'
 import { useCustomOAuthProviders } from './hooks/use-custom-oauth-providers'
 import type { CustomOAuthProvider } from './types'
 
 type CustomOAuthSectionProps = {
-  defaultSSOValues: {
-    'sso.default_provider': string
-    'oidc.enabled': boolean
-    'oidc.client_id': string
-    'oidc.authorization_endpoint': string
-  }
+  defaultSSOValues?: DefaultSSOValues
 }
 
 export function CustomOAuthSection({

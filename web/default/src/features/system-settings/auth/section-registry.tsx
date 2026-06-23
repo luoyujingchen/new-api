@@ -129,11 +129,11 @@ const AUTH_SECTIONS = [
     build: (settings: AuthSettings) => (
       <CustomOAuthSection
         defaultSSOValues={{
-          'sso.default_provider': settings['sso.default_provider'],
-          'oidc.enabled': settings['oidc.enabled'],
-          'oidc.client_id': settings['oidc.client_id'],
+          'sso.default_provider': settings?.['sso.default_provider'] ?? '',
+          'oidc.enabled': settings?.['oidc.enabled'] ?? false,
+          'oidc.client_id': settings?.['oidc.client_id'] ?? '',
           'oidc.authorization_endpoint':
-            settings['oidc.authorization_endpoint'],
+            settings?.['oidc.authorization_endpoint'] ?? '',
         }}
       />
     ),

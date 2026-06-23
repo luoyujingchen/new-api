@@ -49,13 +49,15 @@ const defaultSSOSchema = z.object({
 
 type DefaultSSOFormValues = z.infer<typeof defaultSSOSchema>
 
+export type DefaultSSOValues = {
+  'sso.default_provider': string
+  'oidc.enabled': boolean
+  'oidc.client_id': string
+  'oidc.authorization_endpoint': string
+}
+
 type DefaultSSOSectionProps = {
-  defaultValues: {
-    'sso.default_provider': string
-    'oidc.enabled': boolean
-    'oidc.client_id': string
-    'oidc.authorization_endpoint': string
-  }
+  defaultValues?: DefaultSSOValues
   customProviders?: CustomOAuthProvider[]
   customProvidersLoading?: boolean
 }
@@ -66,6 +68,13 @@ type ProviderOption = {
   disabled?: boolean
 }
 
+const defaultSSOValues: DefaultSSOValues = {
+  'sso.default_provider': '',
+  'oidc.enabled': false,
+  'oidc.client_id': '',
+  'oidc.authorization_endpoint': '',
+}
+
 export function DefaultSSOSection({
   defaultValues,
   customProviders = [],
@@ -73,9 +82,16 @@ export function DefaultSSOSection({
 }: DefaultSSOSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const resolvedDefaultValues = useMemo(
+    () => ({
+      ...defaultSSOValues,
+      ...defaultValues,
+    }),
+    [defaultValues]
+  )
 
   const normalizedDefaults: DefaultSSOFormValues = {
-    defaultProvider: defaultValues['sso.default_provider'] ?? '',
+    defaultProvider: resolvedDefaultValues['sso.default_provider'] ?? '',
   }
 
   const form = useForm<DefaultSSOFormValues>({
@@ -89,9 +105,9 @@ export function DefaultSSOSection({
     ]
 
     if (
-      defaultValues['oidc.enabled'] &&
-      defaultValues['oidc.client_id'] &&
-      defaultValues['oidc.authorization_endpoint']
+      resolvedDefaultValues['oidc.enabled'] &&
+      resolvedDefaultValues['oidc.client_id'] &&
+      resolvedDefaultValues['oidc.authorization_endpoint']
     ) {
       options.push({ value: 'oidc', label: t('OIDC') })
     }
@@ -116,7 +132,12 @@ export function DefaultSSOSection({
     }
 
     return options
-  }, [customProviders, defaultValues, normalizedDefaults.defaultProvider, t])
+  }, [
+    customProviders,
+    resolvedDefaultValues,
+    normalizedDefaults.defaultProvider,
+    t,
+  ])
 
   const onSubmit = async (values: DefaultSSOFormValues) => {
     const selected = values.defaultProvider.trim()
