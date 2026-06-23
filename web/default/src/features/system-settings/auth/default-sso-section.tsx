@@ -155,10 +155,12 @@ export function DefaultSSOSection({
       return
     }
 
-    await updateOption.mutateAsync({
+    const result = await updateOption.mutateAsync({
       key: 'sso.default_provider',
       value: selected,
     })
+    if (!result.success) return
+
     form.reset({ defaultProvider: selected })
   }
 

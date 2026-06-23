@@ -221,7 +221,7 @@ function OAuthCallback() {
             return
           }
           toast.error(res?.data?.message || i18next.t('OAuth failed'))
-          safeNavigate('/sign-in')
+          safeNavigate(buildFallbackSignInPath())
           return
         }
         const message = res?.data?.message || 'OAuth failed'

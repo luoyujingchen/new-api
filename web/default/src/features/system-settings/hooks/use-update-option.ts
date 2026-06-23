@@ -57,6 +57,7 @@ export function useUpdateOption() {
           if (typeof window !== 'undefined') {
             window.localStorage.removeItem('status')
           }
+          queryClient.setQueryData(['status'], null)
           queryClient.invalidateQueries({ queryKey: ['status'] })
         }
 

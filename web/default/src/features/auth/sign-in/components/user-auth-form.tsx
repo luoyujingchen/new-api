@@ -79,7 +79,12 @@ export function UserAuthForm({
   const legalConsentErrorMessage = t('Please agree to the legal terms first')
   const loginFailedMessage = t('Login failed')
 
-  const { status, loading: statusLoading, isPlaceholderData } = useStatus()
+  const {
+    status,
+    loading: statusLoading,
+    fetching: statusFetching,
+    isPlaceholderData,
+  } = useStatus()
   const passkeyLoginEnabled = Boolean(
     status?.passkey_login ?? status?.data?.passkey_login
   )
@@ -123,6 +128,7 @@ export function UserAuthForm({
         )
   const shouldShowDefaultSSO =
     !statusLoading &&
+    !statusFetching &&
     !isPlaceholderData &&
     defaultSSOProvider !== '' &&
     defaultSSOProviderAvailable &&
