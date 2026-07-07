@@ -27,9 +27,19 @@ export interface Application {
   description: string
   status: number
   sort_order: number
+  header_validation_rules?: ApplicationHeaderValidationRule[]
   created_at: number
   updated_at: number
   token_count?: number
+}
+
+export type ApplicationHeaderOperator = 'equals' | 'one_of'
+
+export interface ApplicationHeaderValidationRule {
+  header: string
+  operator: ApplicationHeaderOperator
+  value?: string
+  values?: string[]
 }
 
 export interface ApplicationFormData {
@@ -37,6 +47,7 @@ export interface ApplicationFormData {
   description?: string
   status: number
   sort_order?: number
+  header_validation_rules?: ApplicationHeaderValidationRule[]
 }
 
 export interface ApplicationListResponse {
@@ -46,7 +57,7 @@ export interface ApplicationListResponse {
   page_size: number
 }
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean
   message?: string
   data?: T

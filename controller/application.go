@@ -6,12 +6,31 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 var applicationService = service.NewApplicationService()
+
+func buildApplicationResponse(application *model.Application, tokenCount int64) dto.ApplicationResponse {
+	if application == nil {
+		return dto.ApplicationResponse{}
+	}
+	return dto.ApplicationResponse{
+		Id:                    application.Id,
+		AppKey:                application.AppKey,
+		Name:                  application.Name,
+		Description:           application.Description,
+		Status:                application.Status,
+		SortOrder:             application.SortOrder,
+		HeaderValidationRules: application.GetHeaderValidationRules(),
+		CreatedAt:             application.CreatedAt,
+		UpdatedAt:             application.UpdatedAt,
+		TokenCount:            tokenCount,
+	}
+}
 
 // GetApplications 获取应用列表
 // GET /api/application
@@ -51,17 +70,8 @@ func GetApplications(c *gin.Context) {
 	// 转换为响应格式
 	items := make([]dto.ApplicationResponse, len(result.Applications))
 	for i, application := range result.Applications {
-		items[i] = dto.ApplicationResponse{
-			Id:          application.Id,
-			AppKey:      application.AppKey,
-			Name:        application.Name,
-			Description: application.Description,
-			Status:      application.Status,
-			SortOrder:   application.SortOrder,
-			CreatedAt:   application.CreatedAt,
-			UpdatedAt:   application.UpdatedAt,
-			TokenCount:  stats[application.Id],
-		}
+		app := application
+		items[i] = buildApplicationResponse(&app, stats[application.Id])
 	}
 
 	common.ApiSuccess(c, gin.H{
@@ -88,7 +98,11 @@ func GetAllApplications(c *gin.Context) {
 		return
 	}
 
-	common.ApiSuccess(c, applications)
+	responses := make([]dto.ApplicationResponse, 0, len(applications))
+	for _, application := range applications {
+		responses = append(responses, buildApplicationResponse(application, 0))
+	}
+	common.ApiSuccess(c, responses)
 }
 
 // GetSelectableApplications 获取当前用户可选的启用应用。
@@ -100,7 +114,11 @@ func GetSelectableApplications(c *gin.Context) {
 		return
 	}
 
-	common.ApiSuccess(c, applications)
+	responses := make([]dto.ApplicationResponse, 0, len(applications))
+	for _, application := range applications {
+		responses = append(responses, buildApplicationResponse(application, 0))
+	}
+	common.ApiSuccess(c, responses)
 }
 
 // GetApplication 获取应用详情
@@ -122,17 +140,7 @@ func GetApplication(c *gin.Context) {
 	// 获取统计信息
 	tokenCount, _ := applicationService.GetApplicationStats(id)
 
-	response := dto.ApplicationResponse{
-		Id:          application.Id,
-		AppKey:      application.AppKey,
-		Name:        application.Name,
-		Description: application.Description,
-		Status:      application.Status,
-		SortOrder:   application.SortOrder,
-		CreatedAt:   application.CreatedAt,
-		UpdatedAt:   application.UpdatedAt,
-		TokenCount:  tokenCount,
-	}
+	response := buildApplicationResponse(application, tokenCount)
 
 	common.ApiSuccess(c, response)
 }
@@ -146,11 +154,16 @@ func CreateApplication(c *gin.Context) {
 		return
 	}
 
+	status := 1
+	if req.Status != nil {
+		status = *req.Status
+	}
 	application, err := applicationService.CreateApplication(
 		req.Name,
 		req.Description,
-		req.Status,
+		status,
 		req.SortOrder,
+		req.HeaderValidationRules,
 	)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -161,16 +174,7 @@ func CreateApplication(c *gin.Context) {
 		return
 	}
 
-	response := dto.ApplicationResponse{
-		Id:          application.Id,
-		AppKey:      application.AppKey,
-		Name:        application.Name,
-		Description: application.Description,
-		Status:      application.Status,
-		SortOrder:   application.SortOrder,
-		CreatedAt:   application.CreatedAt,
-		UpdatedAt:   application.UpdatedAt,
-	}
+	response := buildApplicationResponse(application, 0)
 
 	common.ApiSuccess(c, response)
 }
@@ -197,6 +201,7 @@ func UpdateApplication(c *gin.Context) {
 		req.Description,
 		req.Status,
 		req.SortOrder,
+		req.HeaderValidationRules,
 	)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -209,16 +214,7 @@ func UpdateApplication(c *gin.Context) {
 
 	// 获取更新后的数据
 	application, _ := applicationService.GetApplication(id)
-	response := dto.ApplicationResponse{
-		Id:          application.Id,
-		AppKey:      application.AppKey,
-		Name:        application.Name,
-		Description: application.Description,
-		Status:      application.Status,
-		SortOrder:   application.SortOrder,
-		CreatedAt:   application.CreatedAt,
-		UpdatedAt:   application.UpdatedAt,
-	}
+	response := buildApplicationResponse(application, 0)
 
 	common.ApiSuccess(c, response)
 }

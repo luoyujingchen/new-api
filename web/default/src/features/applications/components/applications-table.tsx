@@ -25,13 +25,15 @@ import {
   type ColumnDef,
   type PaginationState,
 } from '@tanstack/react-table'
-import { useTranslation } from 'react-i18next'
 import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -44,7 +46,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { DataTablePagination } from '@/components/data-table/pagination'
-import { Badge } from '@/components/ui/badge'
 import { deleteApplication, updateApplicationStatus } from '../api'
 import { type Application } from '../types'
 
@@ -97,14 +98,14 @@ export function ApplicationsTable({
   })
 
   return (
-    <div className="space-y-4">
-      <div className="px-2">
-        <span className="text-sm text-muted-foreground">
+    <div className='space-y-4'>
+      <div className='px-2'>
+        <span className='text-muted-foreground text-sm'>
           {t('Total {{count}} items', { count: total })}
         </span>
       </div>
 
-      <div className="rounded-md border">
+      <div className='rounded-md border'>
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -143,7 +144,7 @@ export function ApplicationsTable({
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-24 text-center"
+                  className='h-24 text-center'
                 >
                   {t('No results')}
                 </TableCell>
@@ -197,11 +198,39 @@ function useColumns({
     }
   }
 
+  const formatHeaderRules = (application: Application) => {
+    const rules = application.header_validation_rules || []
+    if (rules.length === 0) {
+      return t('No header rules')
+    }
+    const preview = rules
+      .slice(0, 2)
+      .map((rule) => {
+        const value =
+          rule.operator === 'one_of'
+            ? `[${(rule.values || []).join(', ')}]`
+            : rule.value
+        return `${rule.header} ${rule.operator} ${value || ''}`
+      })
+      .join(', ')
+    return rules.length > 2
+      ? t('{{count}} rules: {{preview}}...', {
+          count: rules.length,
+          preview,
+        })
+      : t('{{count}} rules: {{preview}}', {
+          count: rules.length,
+          preview,
+        })
+  }
+
   const columns: ColumnDef<Application>[] = [
     {
       accessorKey: 'name',
       header: t('Application Name'),
-      cell: ({ row }) => <span className="font-medium">{row.getValue('name')}</span>,
+      cell: ({ row }) => (
+        <span className='font-medium'>{row.getValue('name')}</span>
+      ),
     },
     {
       accessorKey: 'app_key',
@@ -209,9 +238,7 @@ function useColumns({
       cell: ({ row }) => {
         const key = row.getValue('app_key') as string
         return (
-          <span className="text-sm font-mono text-muted-foreground">
-            {key}
-          </span>
+          <span className='text-muted-foreground font-mono text-sm'>{key}</span>
         )
       },
     },
@@ -221,18 +248,31 @@ function useColumns({
       cell: ({ row }) => {
         const desc = row.getValue('description') as string
         return desc ? (
-          <span className="text-sm text-muted-foreground truncate max-w-[200px] block">
+          <span className='text-muted-foreground block max-w-[200px] truncate text-sm'>
             {desc}
           </span>
         ) : (
-          <span className="text-muted-foreground">-</span>
+          <span className='text-muted-foreground'>-</span>
         )
       },
     },
     {
       accessorKey: 'token_count',
       header: t('API Keys'),
-      cell: ({ row }) => <span>{(row.getValue('token_count') as number) ?? 0}</span>,
+      cell: ({ row }) => (
+        <span>{(row.getValue('token_count') as number) ?? 0}</span>
+      ),
+    },
+    {
+      id: 'header_validation_rules',
+      header: t('Header Rules'),
+      cell: ({ row }) => {
+        return (
+          <span className='text-muted-foreground block max-w-[280px] truncate text-sm'>
+            {formatHeaderRules(row.original)}
+          </span>
+        )
+      },
     },
     {
       accessorKey: 'status',
@@ -265,23 +305,27 @@ function useColumns({
             >
               <MoreHorizontal className='h-4 w-4' />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => handleToggleStatus(application.id, application.status)}
-              >
-                {application.status === 1 ? t('Disable') : t('Enable')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onEdit(application)}>
-                <Pencil className="mr-2 h-4 w-4" />
-                {t('Edit')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={() => handleDelete(application.id, application.name)}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {t('Delete')}
-              </DropdownMenuItem>
+            <DropdownMenuContent align='end'>
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  onClick={() =>
+                    handleToggleStatus(application.id, application.status)
+                  }
+                >
+                  {application.status === 1 ? t('Disable') : t('Enable')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onEdit(application)}>
+                  <Pencil className='mr-2 h-4 w-4' />
+                  {t('Edit')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className='text-destructive'
+                  onClick={() => handleDelete(application.id, application.name)}
+                >
+                  <Trash2 className='mr-2 h-4 w-4' />
+                  {t('Delete')}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         )

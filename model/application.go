@@ -1,6 +1,11 @@
 package model
 
 import (
+	"strings"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/types"
+
 	"gorm.io/gorm"
 )
 
@@ -13,6 +18,7 @@ type Application struct {
 	Description string         `json:"description,omitempty" gorm:"type:text"`
 	Status      int            `json:"status" gorm:"type:int;default:1;index"` // 1=enabled, 0=disabled
 	SortOrder   int            `json:"sort_order" gorm:"type:int;default:0"`   // 排序字段
+	HeaderRules string         `json:"-" gorm:"column:header_validation_rules;type:text"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 	CreatedAt   int64          `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt   int64          `json:"updated_at" gorm:"autoUpdateTime"`
@@ -20,9 +26,54 @@ type Application struct {
 	Tokens []Token `json:"tokens,omitempty" gorm:"foreignKey:ApplicationId"`
 }
 
+func (a *Application) GetHeaderValidationRules() []types.ApplicationHeaderValidationRule {
+	if a == nil || strings.TrimSpace(a.HeaderRules) == "" {
+		return nil
+	}
+	var rules []types.ApplicationHeaderValidationRule
+	if err := common.Unmarshal([]byte(a.HeaderRules), &rules); err != nil {
+		return nil
+	}
+	normalized, err := types.NormalizeApplicationHeaderValidationRules(rules)
+	if err != nil {
+		return nil
+	}
+	return normalized
+}
+
+func (a *Application) SetHeaderValidationRules(rules []types.ApplicationHeaderValidationRule) error {
+	if a == nil {
+		return gorm.ErrInvalidData
+	}
+	normalized, err := types.NormalizeApplicationHeaderValidationRules(rules)
+	if err != nil {
+		return err
+	}
+	if len(normalized) == 0 {
+		a.HeaderRules = ""
+		return nil
+	}
+	data, err := common.Marshal(normalized)
+	if err != nil {
+		return err
+	}
+	a.HeaderRules = string(data)
+	return nil
+}
+
 // Insert 新建应用
 func (a *Application) Insert() error {
-	return DB.Create(a).Error
+	status := a.Status
+	if err := DB.Create(a).Error; err != nil {
+		return err
+	}
+	if status == 0 {
+		if err := DB.Model(a).Update("status", status).Error; err != nil {
+			return err
+		}
+		a.Status = status
+	}
+	return nil
 }
 
 // Update 更新应用

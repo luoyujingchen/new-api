@@ -17,11 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useState } from 'react'
+import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -35,6 +35,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -50,7 +51,11 @@ import {
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { createApplication, updateApplication } from '../api'
-import { type Application, type ApplicationFormData } from '../types'
+import {
+  type Application,
+  type ApplicationFormData,
+  type ApplicationHeaderValidationRule,
+} from '../types'
 
 const STATUS_OPTIONS = [
   { value: 1, label: 'Enabled' },
@@ -62,6 +67,7 @@ type ApplicationFormValues = {
   description?: string
   status: number
   sort_order: number
+  header_validation_rules_text: string
 }
 
 const DEFAULT_VALUES: ApplicationFormValues = {
@@ -69,6 +75,76 @@ const DEFAULT_VALUES: ApplicationFormValues = {
   description: '',
   status: 1,
   sort_order: 0,
+  header_validation_rules_text: '',
+}
+
+const HEADER_RULE_OPERATORS = ['equals', 'one_of'] as const
+
+function formatHeaderRules(rules?: ApplicationHeaderValidationRule[]) {
+  if (!rules || rules.length === 0) {
+    return ''
+  }
+  return JSON.stringify(rules, null, 2)
+}
+
+function parseHeaderRules(value: string): ApplicationHeaderValidationRule[] {
+  const text = value.trim()
+  if (!text) {
+    return []
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error('Invalid JSON')
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error('Header validation rules must be a JSON array')
+  }
+  return parsed.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error('Each header rule must be an object')
+    }
+    const header = String(item.header ?? '').trim()
+    const operator = String(item.operator ?? '')
+      .trim()
+      .toLowerCase()
+    const ruleValue = String(item.value ?? '').trim()
+    if (!header) {
+      throw new Error('Header name is required')
+    }
+    if (
+      !HEADER_RULE_OPERATORS.includes(
+        operator as (typeof HEADER_RULE_OPERATORS)[number]
+      )
+    ) {
+      throw new Error('Unsupported header rule operator')
+    }
+    if (operator === 'one_of') {
+      if (!Array.isArray(item.values)) {
+        throw new Error('Header rule values are required')
+      }
+      const values = item.values
+        .map((value: unknown) => String(value ?? '').trim())
+        .filter(Boolean)
+      if (values.length === 0) {
+        throw new Error('Header rule values are required')
+      }
+      return {
+        header,
+        operator,
+        values,
+      }
+    }
+    if (!ruleValue) {
+      throw new Error('Header rule value is required')
+    }
+    return {
+      header,
+      operator: operator as ApplicationHeaderValidationRule['operator'],
+      value: ruleValue,
+    }
+  })
 }
 
 interface ApplicationsMutateDrawerProps {
@@ -92,12 +168,22 @@ export function ApplicationsMutateDrawer({
       .string()
       .min(1, t('Application name is required'))
       .max(128, t('Application name is too long')),
-    description: z
-      .string()
-      .max(500, t('Description is too long'))
-      .optional(),
+    description: z.string().max(500, t('Description is too long')).optional(),
     status: z.number().int(),
     sort_order: z.number().int(),
+    header_validation_rules_text: z.string().superRefine((value, ctx) => {
+      try {
+        parseHeaderRules(value)
+      } catch (error) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            error instanceof Error
+              ? t(error.message)
+              : t('Invalid header validation rules'),
+        })
+      }
+    }),
   })
 
   const form = useForm<ApplicationFormValues>({
@@ -112,6 +198,9 @@ export function ApplicationsMutateDrawer({
         description: currentRow.description || '',
         status: currentRow.status,
         sort_order: currentRow.sort_order,
+        header_validation_rules_text: formatHeaderRules(
+          currentRow.header_validation_rules
+        ),
       })
     } else if (open && !isUpdate) {
       form.reset(DEFAULT_VALUES)
@@ -126,6 +215,9 @@ export function ApplicationsMutateDrawer({
         description: data.description,
         status: data.status,
         sort_order: data.sort_order,
+        header_validation_rules: parseHeaderRules(
+          data.header_validation_rules_text
+        ),
       }
 
       const result = isUpdate
@@ -164,18 +256,21 @@ export function ApplicationsMutateDrawer({
 
         <Form {...form}>
           <form
-            id="application-form"
+            id='application-form'
             onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-4 overflow-y-auto py-4 max-h-[calc(100vh-180px)]"
+            className='flex max-h-[calc(100vh-180px)] flex-col gap-4 overflow-y-auto py-4'
           >
             <FormField
               control={form.control}
-              name="name"
+              name='name'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('Application Name')}*</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder={t('Enter application name')} />
+                    <Input
+                      {...field}
+                      placeholder={t('Enter application name')}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -184,7 +279,7 @@ export function ApplicationsMutateDrawer({
 
             <FormField
               control={form.control}
-              name="description"
+              name='description'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('Description')}</FormLabel>
@@ -202,7 +297,7 @@ export function ApplicationsMutateDrawer({
 
             <FormField
               control={form.control}
-              name="status"
+              name='status'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('Status')}</FormLabel>
@@ -220,11 +315,16 @@ export function ApplicationsMutateDrawer({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {STATUS_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={String(option.value)}>
-                          {t(option.label)}
-                        </SelectItem>
-                      ))}
+                      <SelectGroup>
+                        {STATUS_OPTIONS.map((option) => (
+                          <SelectItem
+                            key={option.value}
+                            value={String(option.value)}
+                          >
+                            {t(option.label)}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -234,17 +334,53 @@ export function ApplicationsMutateDrawer({
 
             <FormField
               control={form.control}
-              name="sort_order"
+              name='sort_order'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('Sort Order')}</FormLabel>
                   <FormControl>
                     <Input
-                      type="number"
+                      type='number'
                       {...field}
-                      onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                      onChange={(e) =>
+                        field.onChange(parseInt(e.target.value) || 0)
+                      }
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='header_validation_rules_text'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Header validation rules')}</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      placeholder={`[
+  {
+    "header": "Origin",
+    "operator": "equals",
+    "value": "https://app.example.com"
+  },
+  {
+    "header": "X-Client-App",
+    "operator": "one_of",
+    "values": ["desktop", "mobile"]
+  }
+]`}
+                      rows={10}
+                    />
+                  </FormControl>
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'Optional JSON array. Supported operators: equals, one_of. When any application has rules, API requests must match one enabled application.'
+                    )}
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}
@@ -252,15 +388,11 @@ export function ApplicationsMutateDrawer({
           </form>
         </Form>
 
-        <SheetFooter className="mt-4">
-          <SheetClose render={<Button variant="outline" />}>
+        <SheetFooter className='mt-4'>
+          <SheetClose render={<Button variant='outline' />}>
             {t('Cancel')}
           </SheetClose>
-          <Button
-            type="submit"
-            form="application-form"
-            disabled={isSubmitting}
-          >
+          <Button type='submit' form='application-form' disabled={isSubmitting}>
             {isSubmitting ? t('Saving...') : isUpdate ? t('Save') : t('Create')}
           </Button>
         </SheetFooter>

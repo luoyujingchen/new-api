@@ -361,6 +361,8 @@ func TokenAuth() func(c *gin.Context) {
 		}
 
 		userCache.WriteContext(c)
+		c.Set("username", userCache.Username)
+		c.Set("user_group", userCache.Group)
 
 		userGroup := userCache.Group
 		tokenGroup := token.Group
@@ -439,6 +441,7 @@ func SetupContextForRequestApplication(c *gin.Context, token *model.Token) error
 		return fmt.Errorf("token is nil")
 	}
 
+	requestHeaders := c.Request.Header.Clone()
 	var application *model.Application
 	var err error
 	if token.ApplicationId != nil {
@@ -446,32 +449,111 @@ func SetupContextForRequestApplication(c *gin.Context, token *model.Token) error
 		if err != nil {
 			switch {
 			case errors.Is(err, service.ErrApplicationDisabled):
+				recordApplicationHeaderRejection(c, token, nil, "application_disabled", "当前 API Key 绑定的应用已被禁用", nil)
 				abortWithOpenAiMessage(c, http.StatusForbidden, "当前 API Key 绑定的应用已被禁用")
 			case errors.Is(err, gorm.ErrRecordNotFound):
+				recordApplicationHeaderRejection(c, token, nil, "bound_application_not_found", "当前 API Key 绑定的应用不存在", nil)
 				abortWithOpenAiMessage(c, http.StatusUnauthorized, "当前 API Key 绑定的应用不存在")
 			default:
 				abortWithOpenAiMessage(c, http.StatusInternalServerError, common.TranslateMessage(c, i18n.MsgDatabaseError))
 			}
 			return err
 		}
-		common.SetContextKey(c, constant.ContextKeyApplicationId, int(application.Id))
-		common.SetContextKey(c, constant.ContextKeyApplicationKey, application.AppKey)
-		common.SetContextKey(c, constant.ContextKeyApplicationName, application.Name)
+		setRequestApplicationContext(c, application)
 	}
 
-	appKey := strings.TrimSpace(c.Request.Header.Get("x-app-id"))
+	appKey := strings.TrimSpace(requestHeaders.Get("x-app-id"))
 	c.Request.Header.Del("X-App-Id")
 	if appKey == "" {
-		return nil
+	} else {
+		if application == nil {
+			recordApplicationHeaderRejection(c, token, nil, "x_app_id_without_bound_application", "当前 API Key 未绑定应用，不能使用 x-app-id", nil)
+			abortWithOpenAiMessage(c, http.StatusUnauthorized, "当前 API Key 未绑定应用，不能使用 x-app-id")
+			return service.ErrTokenApplicationNotBound
+		}
+		if application.AppKey != appKey {
+			recordApplicationHeaderRejection(c, token, application, "x_app_id_mismatch", "x-app-id 与当前 API Key 绑定应用不匹配", map[string]interface{}{
+				"received_x_app_id": appKey,
+			})
+			abortWithOpenAiMessage(c, http.StatusUnauthorized, "x-app-id 与当前 API Key 绑定应用不匹配")
+			return service.ErrTokenApplicationMismatch
+		}
 	}
 
-	if application == nil {
-		abortWithOpenAiMessage(c, http.StatusUnauthorized, "当前 API Key 未绑定应用，不能使用 x-app-id")
-		return service.ErrTokenApplicationNotBound
+	match, err := requestApplicationService.MatchRequestApplicationByHeaders(requestHeaders)
+	if err != nil {
+		abortWithOpenAiMessage(c, http.StatusInternalServerError, common.TranslateMessage(c, i18n.MsgDatabaseError))
+		return err
 	}
-	if application.AppKey != appKey {
-		abortWithOpenAiMessage(c, http.StatusUnauthorized, "x-app-id 与当前 API Key 绑定应用不匹配")
+	if match == nil || !match.Checked {
+		return nil
+	}
+	if match.Reason != nil {
+		reasonCode, message, statusCode := applicationHeaderRejectionMessage(match.Reason)
+		recordApplicationHeaderRejection(c, token, match.Application, reasonCode, message, nil)
+		abortWithOpenAiMessage(c, statusCode, message)
+		return match.Reason
+	}
+	if match.Application == nil {
+		return nil
+	}
+	if application != nil && application.Id != match.Application.Id {
+		message := "请求 Header 识别出的应用与当前 API Key 绑定应用不匹配"
+		recordApplicationHeaderRejection(c, token, match.Application, "application_header_token_mismatch", message, map[string]interface{}{
+			"bound_application_id":   application.Id,
+			"bound_application_name": application.Name,
+			"bound_application_key":  application.AppKey,
+		})
+		abortWithOpenAiMessage(c, http.StatusForbidden, message)
 		return service.ErrTokenApplicationMismatch
 	}
+	if application == nil {
+		setRequestApplicationContext(c, match.Application)
+	}
 	return nil
+}
+
+func setRequestApplicationContext(c *gin.Context, application *model.Application) {
+	if c == nil || application == nil {
+		return
+	}
+	common.SetContextKey(c, constant.ContextKeyApplicationId, int(application.Id))
+	common.SetContextKey(c, constant.ContextKeyApplicationKey, application.AppKey)
+	common.SetContextKey(c, constant.ContextKeyApplicationName, application.Name)
+}
+
+func applicationHeaderRejectionMessage(reason error) (string, string, int) {
+	switch {
+	case errors.Is(reason, service.ErrApplicationUnrecognized):
+		return "unregistered_application", "请求 Header 未匹配到已注册应用", http.StatusForbidden
+	case errors.Is(reason, service.ErrApplicationDisabled):
+		return "application_disabled", "请求 Header 匹配到的应用已被禁用", http.StatusForbidden
+	case errors.Is(reason, service.ErrApplicationHeaderAmbiguous):
+		return "application_header_ambiguous", "请求 Header 同时匹配多个应用", http.StatusForbidden
+	default:
+		return "application_header_validation_failed", "请求应用 Header 校验失败", http.StatusForbidden
+	}
+}
+
+func recordApplicationHeaderRejection(c *gin.Context, token *model.Token, application *model.Application, reasonCode string, message string, extra map[string]interface{}) {
+	if c == nil || token == nil || model.LOG_DB == nil {
+		return
+	}
+	validation := map[string]interface{}{
+		"reason": reasonCode,
+	}
+	other := map[string]interface{}{
+		"reject_reason":                 reasonCode,
+		"application_header_validation": validation,
+	}
+	if application != nil {
+		validation["application_id"] = application.Id
+		validation["application_key"] = application.AppKey
+		validation["application_name"] = application.Name
+		validation["application_status"] = application.Status
+	}
+	for key, value := range extra {
+		validation[key] = value
+	}
+	model.RecordErrorLog(c, token.UserId, 0, "", token.Name, "application header validation rejected: "+message, token.Id, 0, false, token.Group, other)
 }
