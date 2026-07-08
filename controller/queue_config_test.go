@@ -5,6 +5,7 @@ import (
 	json "encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -96,6 +97,49 @@ func decodeQueueConfigResponse(t *testing.T, response queueAPIResponse) dto.Queu
 	var config dto.QueueConfigResponse
 	require.NoError(t, common.Unmarshal(response.Data, &config))
 	return config
+}
+
+func TestQueueConfigRoutesAcceptModelNameWithSlash(t *testing.T) {
+	setupQueueControllerTestDB(t)
+
+	router := gin.New()
+	queueRoute := router.Group("/api/queue")
+	{
+		queueRoute.GET("/config", GetQueueConfigs)
+		queueRoute.GET("/config/*model", GetQueueConfig)
+		queueRoute.PUT("/config/*model", UpsertQueueConfig)
+		queueRoute.DELETE("/config/*model", DeleteQueueConfig)
+	}
+
+	modelName := "hb3/glm5.1"
+	escapedModelName := url.PathEscape(modelName)
+	payload := map[string]any{
+		"enabled":        true,
+		"max_queue_size": 12,
+		"queue_timeout":  34,
+	}
+	body, err := common.Marshal(payload)
+	require.NoError(t, err)
+
+	putRecorder := httptest.NewRecorder()
+	putRequest := httptest.NewRequest(http.MethodPut, "/api/queue/config/"+escapedModelName, bytes.NewReader(body))
+	putRequest.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(putRecorder, putRequest)
+	putConfig := decodeQueueConfigResponse(t, decodeQueueAPIResponse(t, putRecorder))
+	require.Equal(t, modelName, putConfig.ModelName)
+	require.Equal(t, 12, putConfig.MaxQueueSize)
+	require.Equal(t, 34, putConfig.QueueTimeout)
+
+	getRecorder := httptest.NewRecorder()
+	getRequest := httptest.NewRequest(http.MethodGet, "/api/queue/config/"+escapedModelName, nil)
+	router.ServeHTTP(getRecorder, getRequest)
+	getConfig := decodeQueueConfigResponse(t, decodeQueueAPIResponse(t, getRecorder))
+	require.Equal(t, modelName, getConfig.ModelName)
+
+	deleteRecorder := httptest.NewRecorder()
+	deleteRequest := httptest.NewRequest(http.MethodDelete, "/api/queue/config/"+escapedModelName, nil)
+	router.ServeHTTP(deleteRecorder, deleteRequest)
+	require.True(t, decodeQueueAPIResponse(t, deleteRecorder).Success)
 }
 
 func TestQueueConfigTimeSlotsAPIContract(t *testing.T) {

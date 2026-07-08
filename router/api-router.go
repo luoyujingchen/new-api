@@ -429,13 +429,13 @@ func SetApiRouter(router *gin.Engine) {
 		queueRoute.Use(middleware.AdminAuth())
 		{
 			queueRoute.GET("/status", controller.GetQueueStatus)
-			queueRoute.GET("/status/:model", controller.GetQueueModelStatus)
+			queueRoute.GET("/status/*model", controller.GetQueueModelStatus)
 			queueRoute.GET("/long-context", controller.GetQueueLongContextTasks)
 			queueRoute.POST("/long-context/cancel", controller.CancelQueueLongContextTask)
 			queueRoute.GET("/config", controller.GetQueueConfigs)
-			queueRoute.GET("/config/:model", controller.GetQueueConfig)
-			queueRoute.PUT("/config/:model", controller.UpsertQueueConfig)
-			queueRoute.DELETE("/config/:model", controller.DeleteQueueConfig)
+			queueRoute.GET("/config/*model", controller.GetQueueConfig)
+			queueRoute.PUT("/config/*model", controller.UpsertQueueConfig)
+			queueRoute.DELETE("/config/*model", controller.DeleteQueueConfig)
 		}
 
 		// Department management

@@ -19,8 +19,12 @@ func GetQueueStatus(c *gin.Context) {
 	common.ApiSuccess(c, service.GetRequestQueueService().GetStatusSnapshot())
 }
 
+func getQueueModelParam(c *gin.Context) string {
+	return strings.TrimSpace(strings.TrimPrefix(c.Param("model"), "/"))
+}
+
 func GetQueueModelStatus(c *gin.Context) {
-	modelName := strings.TrimSpace(c.Param("model"))
+	modelName := getQueueModelParam(c)
 	if modelName == "" {
 		common.ApiErrorMsg(c, "model is required")
 		return
@@ -78,7 +82,7 @@ func GetQueueConfigs(c *gin.Context) {
 }
 
 func GetQueueConfig(c *gin.Context) {
-	modelName := strings.TrimSpace(c.Param("model"))
+	modelName := getQueueModelParam(c)
 	config, err := model.GetQueueConfigByModelName(modelName)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -92,7 +96,7 @@ func GetQueueConfig(c *gin.Context) {
 }
 
 func UpsertQueueConfig(c *gin.Context) {
-	modelName := strings.TrimSpace(c.Param("model"))
+	modelName := getQueueModelParam(c)
 	if modelName == "" {
 		common.ApiErrorMsg(c, "model is required")
 		return
@@ -145,7 +149,7 @@ func UpsertQueueConfig(c *gin.Context) {
 }
 
 func DeleteQueueConfig(c *gin.Context) {
-	modelName := strings.TrimSpace(c.Param("model"))
+	modelName := getQueueModelParam(c)
 	if modelName == "" {
 		common.ApiErrorMsg(c, "model is required")
 		return
