@@ -313,6 +313,7 @@ export type OperationsSettings = {
 }
 
 export type SecuritySettings = {
+  ApplicationHeaderDetectionMode: 'off' | 'observe' | 'enforce'
   ModelRequestRateLimitEnabled: boolean
   ModelRequestRateLimitCount: number
   ModelRequestRateLimitSuccessCount: number

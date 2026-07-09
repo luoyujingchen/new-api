@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { ApplicationHeaderDetectionSection } from '../request-limits/application-header-detection-section'
 import { RateLimitSection } from '../request-limits/rate-limit-section'
 import { SensitiveWordsSection } from '../request-limits/sensitive-words-section'
 import { SSRFSection } from '../request-limits/ssrf-section'
@@ -41,6 +42,20 @@ const SECURITY_SECTIONS = [
           QueueDefaultTimeout: settings.QueueDefaultTimeout,
           QueueMaxTimeout: settings.QueueMaxTimeout,
           QueueGlobalMaxSize: settings.QueueGlobalMaxSize,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'application-header-detection',
+    titleKey: 'Application Header Detection',
+    descriptionKey:
+      'Configure application source detection from request Headers',
+    build: (settings: SecuritySettings) => (
+      <ApplicationHeaderDetectionSection
+        defaultValues={{
+          ApplicationHeaderDetectionMode:
+            settings.ApplicationHeaderDetectionMode,
         }}
       />
     ),

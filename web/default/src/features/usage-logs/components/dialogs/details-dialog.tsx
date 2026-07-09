@@ -64,7 +64,7 @@ import {
   isPerCallBilling,
   isTimingLogType,
 } from '../../lib/utils'
-import type { LogOtherData } from '../../types'
+import type { ApplicationHeaderDetectionInfo, LogOtherData } from '../../types'
 
 function timingTextColorClass(
   variant: 'success' | 'warning' | 'danger'
@@ -391,6 +391,95 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
   )
 }
 
+function formatBooleanLabel(
+  t: (key: string) => string,
+  value: boolean | undefined
+) {
+  if (value == null) return '-'
+  return value ? t('Yes') : t('No')
+}
+
+function formatApplicationLabel(id?: number, key?: string, name?: string) {
+  const parts = [name, key, id ? `ID: ${id}` : ''].filter(Boolean)
+  return parts.length > 0 ? parts.join(' / ') : ''
+}
+
+function ApplicationHeaderDetectionDetails(props: {
+  detection: ApplicationHeaderDetectionInfo
+}) {
+  const { t } = useTranslation()
+  const detection = props.detection
+  const boundApplication = formatApplicationLabel(
+    detection.bound_application_id,
+    detection.bound_application_key,
+    detection.bound_application_name
+  )
+  const matchedApplication = formatApplicationLabel(
+    detection.matched_application_id,
+    detection.matched_application_key,
+    detection.matched_application_name
+  )
+  const ambiguousIds = detection.ambiguous_application_ids?.join(', ')
+
+  return (
+    <DetailSection
+      icon={<ShieldCheck className='size-3.5' aria-hidden='true' />}
+      label={t('Application Header Detection')}
+      variant={detection.blocked ? 'danger' : 'default'}
+    >
+      <DetailRow
+        label={t('Mode')}
+        value={detection.mode ? t(detection.mode) : '-'}
+        mono
+      />
+      <DetailRow
+        label={t('Result')}
+        value={detection.result ? t(detection.result) : '-'}
+        mono
+      />
+      <DetailRow
+        label={t('Checked')}
+        value={formatBooleanLabel(t, detection.checked)}
+        mono
+      />
+      <DetailRow
+        label={t('Enforced')}
+        value={formatBooleanLabel(t, detection.enforced)}
+        mono
+      />
+      <DetailRow
+        label={t('Blocked')}
+        value={formatBooleanLabel(t, detection.blocked)}
+        mono
+      />
+      {boundApplication && (
+        <DetailRow
+          label={t('Bound Application')}
+          value={boundApplication}
+          mono
+        />
+      )}
+      {matchedApplication && (
+        <DetailRow
+          label={t('Detected Application')}
+          value={matchedApplication}
+          mono
+        />
+      )}
+      {ambiguousIds && (
+        <DetailRow
+          label={t('Ambiguous Applications')}
+          value={ambiguousIds}
+          mono
+        />
+      )}
+      {detection.reason && (
+        <DetailRow label={t('Reason')} value={detection.reason} />
+      )}
+    </DetailSection>
+  )
+}
+
 interface DetailsDialogProps {
   log: UsageLog
   isAdmin: boolean
@@ -404,6 +493,9 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
   const typeConfig = getLogTypeConfig(props.log.type)
+  const applicationHeaderDetection =
+    other?.application_header_detection ??
+    other?.request_context?.application?.header_detection
 
   const isViolation = isViolationFeeLog(other)
   const isRefund = props.log.type === 6
@@ -667,6 +759,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
               >
                 <p className='text-xs break-words'>{other.reject_reason}</p>
               </DetailSection>
+            )}
+
+            {applicationHeaderDetection && (
+              <ApplicationHeaderDetectionDetails
+                detection={applicationHeaderDetection}
+              />
             )}
 
             {/* Violation fee info */}
@@ -986,35 +1084,33 @@ export function DetailsDialog(props: DetailsDialogProps) {
             )}
 
             {/* Param override */}
-            {other?.po &&
-              Array.isArray(other.po) &&
-              other.po.length > 0 && (
-                <DetailSection
-                  icon={<Settings2 className='size-3.5' aria-hidden='true' />}
-                  label={`${t('Param Override')} (${other.po.length})`}
-                >
-                  {other.po.filter(Boolean).map((line, idx) => {
-                    const parsed = parseAuditLine(line)
-                    if (!parsed) return null
-                    return (
-                      <div
-                        key={idx}
-                        className='bg-background/60 flex min-w-0 flex-col gap-1.5 rounded border p-2 sm:flex-row sm:items-start sm:gap-2'
-                      >
-                        <StatusBadge
-                          variant='neutral'
-                          label={getParamOverrideActionLabel(parsed.action, t)}
-                          className='shrink-0 font-medium'
-                          copyable={false}
-                        />
-                        <span className='min-w-0 font-mono text-[11px] leading-relaxed break-all sm:break-words'>
-                          {parsed.content}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </DetailSection>
-              )}
+            {other?.po && Array.isArray(other.po) && other.po.length > 0 && (
+              <DetailSection
+                icon={<Settings2 className='size-3.5' aria-hidden='true' />}
+                label={`${t('Param Override')} (${other.po.length})`}
+              >
+                {other.po.filter(Boolean).map((line, idx) => {
+                  const parsed = parseAuditLine(line)
+                  if (!parsed) return null
+                  return (
+                    <div
+                      key={idx}
+                      className='bg-background/60 flex min-w-0 flex-col gap-1.5 rounded border p-2 sm:flex-row sm:items-start sm:gap-2'
+                    >
+                      <StatusBadge
+                        variant='neutral'
+                        label={getParamOverrideActionLabel(parsed.action, t)}
+                        className='shrink-0 font-medium'
+                        copyable={false}
+                      />
+                      <span className='min-w-0 font-mono text-[11px] leading-relaxed break-all sm:break-words'>
+                        {parsed.content}
+                      </span>
+                    </div>
+                  )
+                })}
+              </DetailSection>
+            )}
 
             {/* Content */}
             {details && (

@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -229,6 +230,14 @@ func UpdateOption(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "无效的主题值，可选值：default（新版前端）、classic（经典前端）",
+			})
+			return
+		}
+	case "ApplicationHeaderDetectionMode":
+		if !types.IsApplicationHeaderDetectionMode(option.Value.(string)) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "无效的应用 Header 识别模式，可选值：off、observe、enforce",
 			})
 			return
 		}

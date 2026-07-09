@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -58,9 +59,10 @@ type DepartmentHierarchyItem struct {
 }
 
 type RequestContextApplication struct {
-	Id   int    `json:"id,omitempty"`
-	Key  string `json:"key,omitempty"`
-	Name string `json:"name,omitempty"`
+	Id              int                               `json:"id,omitempty"`
+	Key             string                            `json:"key,omitempty"`
+	Name            string                            `json:"name,omitempty"`
+	HeaderDetection *types.ApplicationHeaderDetection `json:"header_detection,omitempty"`
 }
 
 type RequestContextToken struct {
@@ -228,9 +230,10 @@ func BuildRequestContextSnapshot(c *gin.Context, log *Log, other map[string]inte
 			_ = common.UnmarshalJsonStr(raw, &snapshot.Organization.DepartmentHierarchy)
 		}
 		snapshot.Application = RequestContextApplication{
-			Id:   common.GetContextKeyInt(c, constant.ContextKeyApplicationId),
-			Key:  common.GetContextKeyString(c, constant.ContextKeyApplicationKey),
-			Name: common.GetContextKeyString(c, constant.ContextKeyApplicationName),
+			Id:              common.GetContextKeyInt(c, constant.ContextKeyApplicationId),
+			Key:             common.GetContextKeyString(c, constant.ContextKeyApplicationKey),
+			Name:            common.GetContextKeyString(c, constant.ContextKeyApplicationName),
+			HeaderDetection: requestApplicationHeaderDetectionFromContext(c),
 		}
 		snapshot.Token = RequestContextToken{
 			Id:                  common.GetContextKeyInt(c, constant.ContextKeyTokenId),
@@ -401,7 +404,21 @@ func fillSnapshotFromLog(snapshot *RequestContextSnapshot, c *gin.Context, log *
 		if snapshot.Application.Name == "" {
 			snapshot.Application.Name = common.GetContextKeyString(c, constant.ContextKeyApplicationName)
 		}
+		if snapshot.Application.HeaderDetection == nil {
+			snapshot.Application.HeaderDetection = requestApplicationHeaderDetectionFromContext(c)
+		}
 	}
+}
+
+func requestApplicationHeaderDetectionFromContext(c *gin.Context) *types.ApplicationHeaderDetection {
+	if c == nil {
+		return nil
+	}
+	detection, ok := common.GetContextKeyType[types.ApplicationHeaderDetection](c, constant.ContextKeyApplicationHeaderDetection)
+	if !ok {
+		return nil
+	}
+	return &detection
 }
 
 func requestClientIPForLog(c *gin.Context, log *Log) string {

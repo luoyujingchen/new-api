@@ -11,8 +11,10 @@ import (
 
 func setupApplicationHeaderRuleTest(t *testing.T) {
 	t.Helper()
+	InvalidateApplicationHeaderRulesCache()
 	require.NoError(t, model.DB.AutoMigrate(&model.Application{}))
 	t.Cleanup(func() {
+		InvalidateApplicationHeaderRulesCache()
 		require.NoError(t, model.DB.Exec("DELETE FROM applications").Error)
 	})
 }
@@ -29,8 +31,21 @@ func createApplicationWithHeaderRules(t *testing.T, name string, status int, rul
 	return application
 }
 
+func createApplicationWithHeaderRulesAndStrict(t *testing.T, name string, status int, strict bool, rules []types.ApplicationHeaderValidationRule) *model.Application {
+	t.Helper()
+	application := createApplicationWithHeaderRules(t, name, status, rules)
+	application.HeaderMatchRequired = strict
+	require.NoError(t, application.Update())
+	InvalidateApplicationHeaderRulesCache()
+	return application
+}
+
 func applicationHeaderRulesPtr(rules []types.ApplicationHeaderValidationRule) *[]types.ApplicationHeaderValidationRule {
 	return &rules
+}
+
+func applicationHeaderMatchRequiredPtr(required bool) *bool {
+	return &required
 }
 
 func TestMatchRequestApplicationByHeadersSupportsEquals(t *testing.T) {
@@ -148,10 +163,10 @@ func TestMatchRequestApplicationByHeadersRejectsUnregisteredApplication(t *testi
 	require.ErrorIs(t, match.Reason, ErrApplicationUnrecognized)
 }
 
-func TestMatchRequestApplicationByHeadersRejectsDisabledApplication(t *testing.T) {
+func TestMatchRequestApplicationByHeadersSkipsDisabledApplication(t *testing.T) {
 	setupApplicationHeaderRuleTest(t)
 	svc := NewApplicationService()
-	application := createApplicationWithHeaderRules(t, "disabled", 0, []types.ApplicationHeaderValidationRule{
+	createApplicationWithHeaderRules(t, "disabled", 0, []types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://disabled.example.com"},
 	})
 
@@ -161,11 +176,9 @@ func TestMatchRequestApplicationByHeadersRejectsDisabledApplication(t *testing.T
 	match, err := svc.MatchRequestApplicationByHeaders(headers)
 	require.NoError(t, err)
 	require.NotNil(t, match)
-	require.True(t, match.Checked)
-	require.True(t, match.Matched)
-	require.ErrorIs(t, match.Reason, ErrApplicationDisabled)
-	require.NotNil(t, match.Application)
-	require.Equal(t, application.Id, match.Application.Id)
+	require.False(t, match.Checked)
+	require.False(t, match.Matched)
+	require.NoError(t, match.Reason)
 }
 
 func TestMatchRequestApplicationByHeadersKeepsLegacyBehaviorWithoutRules(t *testing.T) {
@@ -186,7 +199,7 @@ func TestCreateApplicationRejectsOverlappingHeaderRules(t *testing.T) {
 	svc := NewApplicationService()
 	_, err := svc.CreateApplication("existing", "", 1, 0, []types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://app.example.com"},
-	})
+	}, false)
 	require.NoError(t, err)
 
 	_, err = svc.CreateApplication("conflicting", "", 1, 0, []types.ApplicationHeaderValidationRule{
@@ -194,10 +207,54 @@ func TestCreateApplicationRejectsOverlappingHeaderRules(t *testing.T) {
 			"https://app.example.com",
 			"https://other.example.com",
 		}},
-	})
+	}, true)
 
 	require.ErrorIs(t, err, ErrApplicationHeaderConflict)
 	require.Contains(t, err.Error(), "existing")
+}
+
+func TestCreateApplicationAllowsOverlappingHeaderRulesWhenNoStrictApplication(t *testing.T) {
+	setupApplicationHeaderRuleTest(t)
+	svc := NewApplicationService()
+	_, err := svc.CreateApplication("existing", "", 1, 0, []types.ApplicationHeaderValidationRule{
+		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://app.example.com"},
+	}, false)
+	require.NoError(t, err)
+
+	application, err := svc.CreateApplication("overlapping", "", 1, 0, []types.ApplicationHeaderValidationRule{
+		{Header: "Origin", Operator: types.ApplicationHeaderOperatorOneOf, Values: []string{
+			"https://app.example.com",
+			"https://other.example.com",
+		}},
+	}, false)
+
+	require.NoError(t, err)
+	require.NotNil(t, application)
+}
+
+func TestCreateApplicationRejectsOverlapWithExistingStrictApplication(t *testing.T) {
+	setupApplicationHeaderRuleTest(t)
+	svc := NewApplicationService()
+	_, err := svc.CreateApplication("strict", "", 1, 0, []types.ApplicationHeaderValidationRule{
+		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://app.example.com"},
+	}, true)
+	require.NoError(t, err)
+
+	_, err = svc.CreateApplication("overlapping", "", 1, 0, []types.ApplicationHeaderValidationRule{
+		{Header: "X-Client-App", Operator: types.ApplicationHeaderOperatorEquals, Value: "desktop"},
+	}, false)
+
+	require.ErrorIs(t, err, ErrApplicationHeaderConflict)
+	require.Contains(t, err.Error(), "strict")
+}
+
+func TestCreateApplicationRejectsStrictWithoutHeaderRules(t *testing.T) {
+	setupApplicationHeaderRuleTest(t)
+	svc := NewApplicationService()
+
+	_, err := svc.CreateApplication("strict-without-rules", "", 1, 0, nil, true)
+
+	require.ErrorIs(t, err, ErrApplicationHeaderInvalid)
 }
 
 func TestCreateApplicationRejectsDifferentHeaderRules(t *testing.T) {
@@ -205,12 +262,12 @@ func TestCreateApplicationRejectsDifferentHeaderRules(t *testing.T) {
 	svc := NewApplicationService()
 	_, err := svc.CreateApplication("origin-app", "", 1, 0, []types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://app.example.com"},
-	})
+	}, false)
 	require.NoError(t, err)
 
 	_, err = svc.CreateApplication("client-app", "", 1, 0, []types.ApplicationHeaderValidationRule{
 		{Header: "X-Client-App", Operator: types.ApplicationHeaderOperatorEquals, Value: "desktop"},
-	})
+	}, true)
 
 	require.ErrorIs(t, err, ErrApplicationHeaderConflict)
 }
@@ -220,7 +277,7 @@ func TestCreateApplicationAllowsDisjointValuesOnSharedHeader(t *testing.T) {
 	svc := NewApplicationService()
 	_, err := svc.CreateApplication("origin-app", "", 1, 0, []types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://app.example.com"},
-	})
+	}, false)
 	require.NoError(t, err)
 
 	application, err := svc.CreateApplication("other-origin-app", "", 1, 0, []types.ApplicationHeaderValidationRule{
@@ -228,7 +285,7 @@ func TestCreateApplicationAllowsDisjointValuesOnSharedHeader(t *testing.T) {
 			"https://other.example.com",
 			"https://another.example.com",
 		}},
-	})
+	}, true)
 
 	require.NoError(t, err)
 	require.NotNil(t, application)
@@ -239,11 +296,11 @@ func TestUpdateApplicationRejectsOverlappingHeaderRules(t *testing.T) {
 	svc := NewApplicationService()
 	existing, err := svc.CreateApplication("existing", "", 1, 0, []types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://app.example.com"},
-	})
+	}, false)
 	require.NoError(t, err)
 	candidate, err := svc.CreateApplication("candidate", "", 1, 0, []types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://candidate.example.com"},
-	})
+	}, false)
 	require.NoError(t, err)
 
 	err = svc.UpdateApplication(candidate.Id, "candidate", "", 1, 0, applicationHeaderRulesPtr([]types.ApplicationHeaderValidationRule{
@@ -251,7 +308,7 @@ func TestUpdateApplicationRejectsOverlappingHeaderRules(t *testing.T) {
 			"https://candidate.example.com",
 			"https://app.example.com",
 		}},
-	}))
+	}), applicationHeaderMatchRequiredPtr(true))
 
 	require.ErrorIs(t, err, ErrApplicationHeaderConflict)
 	require.Contains(t, err.Error(), existing.Name)
@@ -262,10 +319,10 @@ func TestUpdateApplicationPreservesHeaderRulesWhenOmitted(t *testing.T) {
 	svc := NewApplicationService()
 	application, err := svc.CreateApplication("existing", "", 1, 0, []types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://app.example.com"},
-	})
+	}, false)
 	require.NoError(t, err)
 
-	err = svc.UpdateApplication(application.Id, "existing-renamed", "updated", 1, 9, nil)
+	err = svc.UpdateApplication(application.Id, "existing-renamed", "updated", 1, 9, nil, nil)
 	require.NoError(t, err)
 
 	updated, err := model.GetApplicationByID(application.Id)
@@ -282,10 +339,10 @@ func TestUpdateApplicationClearsHeaderRulesWhenExplicitlyEmpty(t *testing.T) {
 	svc := NewApplicationService()
 	application, err := svc.CreateApplication("existing", "", 1, 0, []types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://app.example.com"},
-	})
+	}, false)
 	require.NoError(t, err)
 
-	err = svc.UpdateApplication(application.Id, "existing", "", 1, 0, applicationHeaderRulesPtr([]types.ApplicationHeaderValidationRule{}))
+	err = svc.UpdateApplication(application.Id, "existing", "", 1, 0, applicationHeaderRulesPtr([]types.ApplicationHeaderValidationRule{}), applicationHeaderMatchRequiredPtr(false))
 	require.NoError(t, err)
 
 	updated, err := model.GetApplicationByID(application.Id)
@@ -296,7 +353,7 @@ func TestUpdateApplicationClearsHeaderRulesWhenExplicitlyEmpty(t *testing.T) {
 func TestUpdateApplicationStatusRejectsEnablingOverlappingHeaderRules(t *testing.T) {
 	setupApplicationHeaderRuleTest(t)
 	svc := NewApplicationService()
-	enabled := createApplicationWithHeaderRules(t, "enabled", 1, []types.ApplicationHeaderValidationRule{
+	enabled := createApplicationWithHeaderRulesAndStrict(t, "enabled", 1, true, []types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://app.example.com"},
 	})
 	disabled := createApplicationWithHeaderRules(t, "disabled-overlap", 0, []types.ApplicationHeaderValidationRule{

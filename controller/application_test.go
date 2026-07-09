@@ -104,13 +104,18 @@ func applicationControllerHeaderRulesPtr(rules []types.ApplicationHeaderValidati
 	return &rules
 }
 
+func applicationControllerHeaderMatchRequiredPtr(required bool) *bool {
+	return &required
+}
+
 func TestCreateApplicationPersistsHeaderValidationRules(t *testing.T) {
 	setupApplicationControllerTestDB(t)
 
 	ctx, recorder := newApplicationContext(t, http.MethodPost, "/api/application/", map[string]any{
-		"name":        "Desktop App",
-		"description": "desktop client",
-		"sort_order":  3,
+		"name":                  "Desktop App",
+		"description":           "desktop client",
+		"sort_order":            3,
+		"header_match_required": true,
 		"header_validation_rules": []types.ApplicationHeaderValidationRule{
 			{
 				Header:   " origin ",
@@ -126,6 +131,7 @@ func TestCreateApplicationPersistsHeaderValidationRules(t *testing.T) {
 	require.Equal(t, "Desktop App", response.Data.Name)
 	require.Equal(t, 1, response.Data.Status)
 	require.Equal(t, 3, response.Data.SortOrder)
+	require.True(t, response.Data.HeaderMatchRequired)
 	require.Len(t, response.Data.HeaderValidationRules, 1)
 	require.Equal(t, types.ApplicationHeaderOperatorOneOf, response.Data.HeaderValidationRules[0].Operator)
 	require.Equal(t, []string{"https://desktop.example.com", "https://mobile.example.com"}, response.Data.HeaderValidationRules[0].Values)
@@ -262,8 +268,9 @@ func TestCreateApplicationRejectsConflictingHeaderValidationRules(t *testing.T) 
 	require.NoError(t, application.Insert())
 
 	ctx, recorder := newApplicationContext(t, http.MethodPost, "/api/application/", map[string]any{
-		"name":   "Conflicting App",
-		"status": 1,
+		"name":                  "Conflicting App",
+		"status":                1,
+		"header_match_required": true,
 		"header_validation_rules": []types.ApplicationHeaderValidationRule{
 			{Header: "Origin", Operator: types.ApplicationHeaderOperatorOneOf, Values: []string{
 				"https://app.example.com",
@@ -293,8 +300,9 @@ func TestCreateApplicationRejectsDifferentHeaderValidationRules(t *testing.T) {
 	require.NoError(t, application.Insert())
 
 	ctx, recorder := newApplicationContext(t, http.MethodPost, "/api/application/", map[string]any{
-		"name":   "Different Header App",
-		"status": 1,
+		"name":                  "Different Header App",
+		"status":                1,
+		"header_match_required": true,
 		"header_validation_rules": []types.ApplicationHeaderValidationRule{
 			{Header: "X-Client-App", Operator: types.ApplicationHeaderOperatorEquals, Value: "desktop"},
 		},
@@ -331,9 +339,10 @@ func TestUpdateApplicationRejectsConflictingHeaderValidationRules(t *testing.T) 
 	require.NoError(t, candidate.Insert())
 
 	ctx, recorder := newApplicationContext(t, http.MethodPut, "/api/application/"+strconv.FormatInt(candidate.Id, 10), dto.UpdateApplicationRequest{
-		Name:      candidate.Name,
-		Status:    1,
-		SortOrder: 0,
+		Name:                candidate.Name,
+		Status:              1,
+		SortOrder:           0,
+		HeaderMatchRequired: applicationControllerHeaderMatchRequiredPtr(true),
 		HeaderValidationRules: applicationControllerHeaderRulesPtr([]types.ApplicationHeaderValidationRule{
 			{Header: "Origin", Operator: types.ApplicationHeaderOperatorOneOf, Values: []string{
 				"https://candidate.example.com",
@@ -354,9 +363,10 @@ func TestUpdateApplicationStatusRejectsConflictingHeaderValidationRules(t *testi
 	setupApplicationControllerTestDB(t)
 
 	existing := &model.Application{
-		AppKey: "existing-app",
-		Name:   "Existing App",
-		Status: 1,
+		AppKey:              "existing-app",
+		Name:                "Existing App",
+		Status:              1,
+		HeaderMatchRequired: true,
 	}
 	require.NoError(t, existing.SetHeaderValidationRules([]types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://app.example.com"},

@@ -275,6 +275,18 @@ function useColumns({
       },
     },
     {
+      accessorKey: 'header_match_required',
+      header: t('Header Strict Match'),
+      cell: ({ row }) => {
+        const required = row.getValue('header_match_required') as boolean
+        return (
+          <Badge variant={required ? 'default' : 'secondary'}>
+            {required ? t('Required') : t('Observe only')}
+          </Badge>
+        )
+      },
+    },
+    {
       accessorKey: 'status',
       header: t('Status'),
       cell: ({ row }) => {

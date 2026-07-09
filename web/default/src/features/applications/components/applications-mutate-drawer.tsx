@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -49,6 +50,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { createApplication, updateApplication } from '../api'
 import {
@@ -68,6 +70,7 @@ type ApplicationFormValues = {
   status: number
   sort_order: number
   header_validation_rules_text: string
+  header_match_required: boolean
 }
 
 const DEFAULT_VALUES: ApplicationFormValues = {
@@ -76,6 +79,7 @@ const DEFAULT_VALUES: ApplicationFormValues = {
   status: 1,
   sort_order: 0,
   header_validation_rules_text: '',
+  header_match_required: false,
 }
 
 const HEADER_RULE_OPERATORS = ['equals', 'one_of'] as const
@@ -171,6 +175,7 @@ export function ApplicationsMutateDrawer({
     description: z.string().max(500, t('Description is too long')).optional(),
     status: z.number().int(),
     sort_order: z.number().int(),
+    header_match_required: z.boolean(),
     header_validation_rules_text: z.string().superRefine((value, ctx) => {
       try {
         parseHeaderRules(value)
@@ -198,6 +203,7 @@ export function ApplicationsMutateDrawer({
         description: currentRow.description || '',
         status: currentRow.status,
         sort_order: currentRow.sort_order,
+        header_match_required: Boolean(currentRow.header_match_required),
         header_validation_rules_text: formatHeaderRules(
           currentRow.header_validation_rules
         ),
@@ -215,6 +221,7 @@ export function ApplicationsMutateDrawer({
         description: data.description,
         status: data.status,
         sort_order: data.sort_order,
+        header_match_required: data.header_match_required,
         header_validation_rules: parseHeaderRules(
           data.header_validation_rules_text
         ),
@@ -354,6 +361,29 @@ export function ApplicationsMutateDrawer({
 
             <FormField
               control={form.control}
+              name='header_match_required'
+              render={({ field }) => (
+                <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                  <div className='flex flex-col gap-1'>
+                    <FormLabel>{t('Require Header strict match')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'Only blocks requests when global Application Header detection mode is enforce.'
+                      )}
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name='header_validation_rules_text'
               render={({ field }) => (
                 <FormItem>
@@ -378,7 +408,7 @@ export function ApplicationsMutateDrawer({
                   </FormControl>
                   <p className='text-muted-foreground text-xs'>
                     {t(
-                      'Optional JSON array. Supported operators: equals, one_of. When any application has rules, API requests must match one enabled application.'
+                      'Optional JSON array. Supported operators: equals, one_of. Rules identify request source; strict blocking only applies in enforce mode for applications requiring Header strict match.'
                     )}
                   </p>
                   <FormMessage />

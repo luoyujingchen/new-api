@@ -26,6 +26,7 @@ func buildApplicationResponse(application *model.Application, tokenCount int64) 
 		Status:                application.Status,
 		SortOrder:             application.SortOrder,
 		HeaderValidationRules: application.GetHeaderValidationRules(),
+		HeaderMatchRequired:   application.HeaderMatchRequired,
 		CreatedAt:             application.CreatedAt,
 		UpdatedAt:             application.UpdatedAt,
 		TokenCount:            tokenCount,
@@ -164,6 +165,7 @@ func CreateApplication(c *gin.Context) {
 		status,
 		req.SortOrder,
 		req.HeaderValidationRules,
+		req.HeaderMatchRequired,
 	)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -202,6 +204,7 @@ func UpdateApplication(c *gin.Context) {
 		req.Status,
 		req.SortOrder,
 		req.HeaderValidationRules,
+		req.HeaderMatchRequired,
 	)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {

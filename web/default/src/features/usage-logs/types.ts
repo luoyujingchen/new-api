@@ -93,6 +93,22 @@ export interface ChannelAffinityInfo {
   using_group?: string
 }
 
+export interface ApplicationHeaderDetectionInfo {
+  mode?: string
+  checked?: boolean
+  enforced?: boolean
+  result?: string
+  blocked?: boolean
+  reason?: string
+  matched_application_id?: number
+  matched_application_key?: string
+  matched_application_name?: string
+  bound_application_id?: number
+  bound_application_key?: string
+  bound_application_name?: string
+  ambiguous_application_ids?: number[]
+}
+
 export interface LogOtherData {
   admin_info?: {
     is_multi_key?: boolean
@@ -178,6 +194,15 @@ export interface LogOtherData {
   fee_quota?: number
   // Reject / intercept reason (admin)
   reject_reason?: string
+  application_header_detection?: ApplicationHeaderDetectionInfo
+  request_context?: {
+    application?: {
+      id?: number
+      key?: string
+      name?: string
+      header_detection?: ApplicationHeaderDetectionInfo
+    }
+  }
   // Task-related fields (for refund logs, type=6)
   is_task?: boolean
   task_id?: string
@@ -198,10 +223,10 @@ export interface LogOtherData {
  */
 export interface LogStatistics {
   quota: number
-  rpm: number        // 时间段内平均每分钟请求数
-  tpm: number        // 时间段内平均每分钟 token 数
-  realtime_rpm: number  // 实时最近1分钟请求数
-  realtime_tpm: number  // 实时最近1分钟 token 数
+  rpm: number // 时间段内平均每分钟请求数
+  tpm: number // 时间段内平均每分钟 token 数
+  realtime_rpm: number // 实时最近1分钟请求数
+  realtime_tpm: number // 实时最近1分钟 token 数
 }
 
 // ============================================================================

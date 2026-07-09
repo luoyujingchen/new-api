@@ -419,7 +419,7 @@ export function ApiKeysMutateDrawer({
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Associate this API key with an application for usage tracking'
+                        'Limit this API key to the selected authorized application'
                       )}
                     </FormDescription>
                     <FormMessage />

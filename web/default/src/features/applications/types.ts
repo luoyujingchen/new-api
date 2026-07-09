@@ -28,6 +28,7 @@ export interface Application {
   status: number
   sort_order: number
   header_validation_rules?: ApplicationHeaderValidationRule[]
+  header_match_required: boolean
   created_at: number
   updated_at: number
   token_count?: number
@@ -48,6 +49,7 @@ export interface ApplicationFormData {
   status: number
   sort_order?: number
   header_validation_rules?: ApplicationHeaderValidationRule[]
+  header_match_required?: boolean
 }
 
 export interface ApplicationListResponse {

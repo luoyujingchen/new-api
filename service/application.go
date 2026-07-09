@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -30,8 +32,86 @@ func NewApplicationService() *ApplicationService {
 	return &ApplicationService{}
 }
 
+const applicationHeaderRulesCacheTTL = 30 * time.Second
+
+type cachedApplicationHeaderRule struct {
+	Application model.Application
+	Rules       []types.ApplicationHeaderValidationRule
+}
+
+var applicationHeaderRulesCache = struct {
+	sync.RWMutex
+	expiresAt time.Time
+	rules     []cachedApplicationHeaderRule
+}{}
+
+func GetApplicationHeaderDetectionMode() string {
+	common.OptionMapRWMutex.RLock()
+	mode := common.OptionMap["ApplicationHeaderDetectionMode"]
+	common.OptionMapRWMutex.RUnlock()
+	return types.NormalizeApplicationHeaderDetectionMode(mode)
+}
+
+func InvalidateApplicationHeaderRulesCache() {
+	applicationHeaderRulesCache.Lock()
+	applicationHeaderRulesCache.expiresAt = time.Time{}
+	applicationHeaderRulesCache.rules = nil
+	applicationHeaderRulesCache.Unlock()
+}
+
+func (s *ApplicationService) getCachedApplicationHeaderRules() ([]cachedApplicationHeaderRule, error) {
+	now := time.Now()
+	applicationHeaderRulesCache.RLock()
+	if now.Before(applicationHeaderRulesCache.expiresAt) {
+		rules := cloneCachedApplicationHeaderRules(applicationHeaderRulesCache.rules)
+		applicationHeaderRulesCache.RUnlock()
+		return rules, nil
+	}
+	applicationHeaderRulesCache.RUnlock()
+
+	applicationHeaderRulesCache.Lock()
+	defer applicationHeaderRulesCache.Unlock()
+	if now.Before(applicationHeaderRulesCache.expiresAt) {
+		return cloneCachedApplicationHeaderRules(applicationHeaderRulesCache.rules), nil
+	}
+
+	applications, err := model.GetAllApplications(1)
+	if err != nil {
+		return nil, err
+	}
+	rules := make([]cachedApplicationHeaderRule, 0, len(applications))
+	for _, application := range applications {
+		if application == nil {
+			continue
+		}
+		normalizedRules := application.GetHeaderValidationRules()
+		if len(normalizedRules) == 0 {
+			continue
+		}
+		rules = append(rules, cachedApplicationHeaderRule{
+			Application: *application,
+			Rules:       normalizedRules,
+		})
+	}
+	applicationHeaderRulesCache.rules = cloneCachedApplicationHeaderRules(rules)
+	applicationHeaderRulesCache.expiresAt = time.Now().Add(applicationHeaderRulesCacheTTL)
+	return rules, nil
+}
+
+func cloneCachedApplicationHeaderRules(rules []cachedApplicationHeaderRule) []cachedApplicationHeaderRule {
+	if len(rules) == 0 {
+		return nil
+	}
+	clone := make([]cachedApplicationHeaderRule, len(rules))
+	for i, rule := range rules {
+		clone[i].Application = rule.Application
+		clone[i].Rules = append([]types.ApplicationHeaderValidationRule(nil), rule.Rules...)
+	}
+	return clone
+}
+
 // CreateApplication 创建应用
-func (s *ApplicationService) CreateApplication(name, description string, status int, sortOrder int, headerRules []types.ApplicationHeaderValidationRule) (*model.Application, error) {
+func (s *ApplicationService) CreateApplication(name, description string, status int, sortOrder int, headerRules []types.ApplicationHeaderValidationRule, headerMatchRequired bool) (*model.Application, error) {
 	// 检查名称是否重复
 	var cnt int64
 	if err := model.DB.Model(&model.Application{}).Where("name = ?", name).Count(&cnt).Error; err != nil {
@@ -48,28 +128,30 @@ func (s *ApplicationService) CreateApplication(name, description string, status 
 	}
 
 	application := &model.Application{
-		AppKey:      appKey,
-		Name:        name,
-		Description: description,
-		Status:      status,
-		SortOrder:   sortOrder,
+		AppKey:              appKey,
+		Name:                name,
+		Description:         description,
+		Status:              status,
+		SortOrder:           sortOrder,
+		HeaderMatchRequired: headerMatchRequired,
 	}
 	if err := application.SetHeaderValidationRules(headerRules); err != nil {
 		return nil, err
 	}
-	if err := s.ValidateApplicationHeaderRuleConflicts(0, application.GetHeaderValidationRules()); err != nil {
+	if err := s.ValidateApplicationHeaderRuleConflicts(0, application.Status, application.HeaderMatchRequired, application.GetHeaderValidationRules()); err != nil {
 		return nil, err
 	}
 
 	if err := application.Insert(); err != nil {
 		return nil, err
 	}
+	InvalidateApplicationHeaderRulesCache()
 
 	return application, nil
 }
 
 // UpdateApplication 更新应用
-func (s *ApplicationService) UpdateApplication(id int64, name, description string, status int, sortOrder int, headerRules *[]types.ApplicationHeaderValidationRule) error {
+func (s *ApplicationService) UpdateApplication(id int64, name, description string, status int, sortOrder int, headerRules *[]types.ApplicationHeaderValidationRule, headerMatchRequired *bool) error {
 	application, err := model.GetApplicationByID(id)
 	if err != nil {
 		return err
@@ -88,16 +170,23 @@ func (s *ApplicationService) UpdateApplication(id int64, name, description strin
 	application.Description = description
 	application.Status = status
 	application.SortOrder = sortOrder
+	if headerMatchRequired != nil {
+		application.HeaderMatchRequired = *headerMatchRequired
+	}
 	if headerRules != nil {
 		if err := application.SetHeaderValidationRules(*headerRules); err != nil {
 			return err
 		}
 	}
-	if err := s.ValidateApplicationHeaderRuleConflicts(id, application.GetHeaderValidationRules()); err != nil {
+	if err := s.ValidateApplicationHeaderRuleConflicts(id, application.Status, application.HeaderMatchRequired, application.GetHeaderValidationRules()); err != nil {
 		return err
 	}
 
-	return application.Update()
+	if err := application.Update(); err != nil {
+		return err
+	}
+	InvalidateApplicationHeaderRulesCache()
+	return nil
 }
 
 // DeleteApplication 删除应用
@@ -111,7 +200,11 @@ func (s *ApplicationService) DeleteApplication(id int64) error {
 		return gorm.ErrForeignKeyViolated
 	}
 
-	return model.DeleteApplicationByID(id)
+	if err := model.DeleteApplicationByID(id); err != nil {
+		return err
+	}
+	InvalidateApplicationHeaderRulesCache()
+	return nil
 }
 
 // GetApplication 获取应用详情
@@ -136,11 +229,15 @@ func (s *ApplicationService) UpdateApplicationStatus(id int64, status int) error
 		if err != nil {
 			return err
 		}
-		if err := s.ValidateApplicationHeaderRuleConflicts(id, application.GetHeaderValidationRules()); err != nil {
+		if err := s.ValidateApplicationHeaderRuleConflicts(id, status, application.HeaderMatchRequired, application.GetHeaderValidationRules()); err != nil {
 			return err
 		}
 	}
-	return model.UpdateApplicationStatus(id, status)
+	if err := model.UpdateApplicationStatus(id, status); err != nil {
+		return err
+	}
+	InvalidateApplicationHeaderRulesCache()
+	return nil
 }
 
 // GetApplicationStats 获取应用统计信息
@@ -201,12 +298,17 @@ type applicationHeaderValueSet map[string]struct{}
 
 type applicationHeaderRuleConstraints map[string]applicationHeaderValueSet
 
-// ValidateApplicationHeaderRuleConflicts rejects rules that can overlap with
-// another application's configured header rules. Only equals/one_of are
-// supported, so each constrained header is represented as a finite value set.
-// Two rule sets overlap if one request can satisfy both. If they constrain
-// different headers, their constraints can coexist on the same request.
-func (s *ApplicationService) ValidateApplicationHeaderRuleConflicts(applicationId int64, rules []types.ApplicationHeaderValidationRule) error {
+// ValidateApplicationHeaderRuleConflicts protects the uniqueness of enabled
+// applications that require strict header matching. Non-strict applications may
+// overlap with each other, but they cannot overlap with any enabled strict
+// application because that would make strict matching ambiguous.
+func (s *ApplicationService) ValidateApplicationHeaderRuleConflicts(applicationId int64, status int, headerMatchRequired bool, rules []types.ApplicationHeaderValidationRule) error {
+	if status != 1 {
+		return nil
+	}
+	if headerMatchRequired && len(rules) == 0 {
+		return fmt.Errorf("%w: strict header matching requires header rules", ErrApplicationHeaderInvalid)
+	}
 	if len(rules) == 0 {
 		return nil
 	}
@@ -215,10 +317,13 @@ func (s *ApplicationService) ValidateApplicationHeaderRuleConflicts(applicationI
 		return err
 	}
 	if len(candidate) == 0 {
+		if headerMatchRequired {
+			return fmt.Errorf("%w: strict header matching requires header rules", ErrApplicationHeaderInvalid)
+		}
 		return nil
 	}
 
-	applications, err := model.GetAllApplications(-1)
+	applications, err := model.GetAllApplications(1)
 	if err != nil {
 		return err
 	}
@@ -228,6 +333,9 @@ func (s *ApplicationService) ValidateApplicationHeaderRuleConflicts(applicationI
 		}
 		existingRules := application.GetHeaderValidationRules()
 		if len(existingRules) == 0 {
+			continue
+		}
+		if !headerMatchRequired && !application.HeaderMatchRequired {
 			continue
 		}
 		existing, err := buildApplicationHeaderRuleConstraints(existingRules)
@@ -312,68 +420,52 @@ func intersectApplicationHeaderValueSets(a applicationHeaderValueSet, b applicat
 }
 
 type RequestApplicationMatch struct {
-	Application *model.Application
-	Matched     bool
-	Checked     bool
-	Reason      error
+	Application           *model.Application
+	Applications          []*model.Application
+	Matched               bool
+	Checked               bool
+	Reason                error
+	AmbiguousApplications []*model.Application
 }
 
 // MatchRequestApplicationByHeaders identifies a request application using the
-// configured header rules on applications. If no application has header rules,
-// Checked is false so callers can keep legacy behavior.
+// configured header rules on enabled applications. If no enabled application
+// has header rules, Checked is false.
 func (s *ApplicationService) MatchRequestApplicationByHeaders(headers http.Header) (*RequestApplicationMatch, error) {
-	applications, err := model.GetAllApplications(-1)
+	rules, err := s.getCachedApplicationHeaderRules()
 	if err != nil {
 		return nil, err
 	}
-
-	checked := false
-	matches := make([]*model.Application, 0, 1)
-	for _, application := range applications {
-		if application == nil {
-			continue
-		}
-		rules := application.GetHeaderValidationRules()
-		if len(rules) == 0 {
-			continue
-		}
-		checked = true
-		if types.MatchApplicationHeaderValidationRules(headers, rules) {
-			matches = append(matches, application)
-		}
-	}
-
-	if !checked {
+	if len(rules) == 0 {
 		return &RequestApplicationMatch{Checked: false}, nil
 	}
+
+	matches := make([]*model.Application, 0, 1)
+	for _, cachedRule := range rules {
+		if types.MatchApplicationHeaderValidationRules(headers, cachedRule.Rules) {
+			application := cachedRule.Application
+			matches = append(matches, &application)
+		}
+	}
+
 	if len(matches) == 0 {
 		return &RequestApplicationMatch{Checked: true, Reason: ErrApplicationUnrecognized}, nil
 	}
-
-	enabledMatches := make([]*model.Application, 0, len(matches))
-	for _, application := range matches {
-		if application.Status != 1 {
-			return &RequestApplicationMatch{
-				Application: application,
-				Matched:     true,
-				Checked:     true,
-				Reason:      ErrApplicationDisabled,
-			}, nil
-		}
-		enabledMatches = append(enabledMatches, application)
-	}
-	if len(enabledMatches) > 1 {
+	if len(matches) > 1 {
 		return &RequestApplicationMatch{
-			Application: enabledMatches[0],
-			Matched:     true,
-			Checked:     true,
-			Reason:      ErrApplicationHeaderAmbiguous,
+			Application:           matches[0],
+			Applications:          matches,
+			AmbiguousApplications: matches,
+			Matched:               true,
+			Checked:               true,
+			Reason:                ErrApplicationHeaderAmbiguous,
 		}, nil
 	}
 
 	return &RequestApplicationMatch{
-		Application: enabledMatches[0],
-		Matched:     true,
-		Checked:     true,
+		Application:  matches[0],
+		Applications: matches,
+		Matched:      true,
+		Checked:      true,
 	}, nil
 }

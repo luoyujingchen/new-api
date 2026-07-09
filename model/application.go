@@ -12,16 +12,17 @@ import (
 // Application 应用模型
 // 用于管理员创建应用，用户创建 API Key 时可以选择关联应用
 type Application struct {
-	Id          int64          `json:"id" gorm:"primaryKey;autoIncrement"`
-	AppKey      string         `json:"app_key" gorm:"type:varchar(64);uniqueIndex;not null"` // 应用唯一标识，用于API调用
-	Name        string         `json:"name" gorm:"type:varchar(128);not null;uniqueIndex:uk_application_name,where:deleted_at IS NULL"`
-	Description string         `json:"description,omitempty" gorm:"type:text"`
-	Status      int            `json:"status" gorm:"type:int;default:1;index"` // 1=enabled, 0=disabled
-	SortOrder   int            `json:"sort_order" gorm:"type:int;default:0"`   // 排序字段
-	HeaderRules string         `json:"-" gorm:"column:header_validation_rules;type:text"`
-	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
-	CreatedAt   int64          `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt   int64          `json:"updated_at" gorm:"autoUpdateTime"`
+	Id                  int64          `json:"id" gorm:"primaryKey;autoIncrement"`
+	AppKey              string         `json:"app_key" gorm:"type:varchar(64);uniqueIndex;not null"` // 应用唯一标识，用于API调用
+	Name                string         `json:"name" gorm:"type:varchar(128);not null;uniqueIndex:uk_application_name,where:deleted_at IS NULL"`
+	Description         string         `json:"description,omitempty" gorm:"type:text"`
+	Status              int            `json:"status" gorm:"type:int;default:1;index"` // 1=enabled, 0=disabled
+	SortOrder           int            `json:"sort_order" gorm:"type:int;default:0"`   // 排序字段
+	HeaderRules         string         `json:"-" gorm:"column:header_validation_rules;type:text"`
+	HeaderMatchRequired bool           `json:"header_match_required" gorm:"default:false"`
+	DeletedAt           gorm.DeletedAt `json:"-" gorm:"index"`
+	CreatedAt           int64          `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt           int64          `json:"updated_at" gorm:"autoUpdateTime"`
 	// Relations
 	Tokens []Token `json:"tokens,omitempty" gorm:"foreignKey:ApplicationId"`
 }

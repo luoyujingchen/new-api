@@ -65,6 +65,7 @@ func setupApplicationHeaderAuthTestDB(t *testing.T) *gorm.DB {
 	oldUsingSQLite := common.UsingSQLite
 	oldUsingMySQL := common.UsingMySQL
 	oldUsingPostgreSQL := common.UsingPostgreSQL
+	oldOptionMap := common.OptionMap
 
 	model.DB = db
 	model.LOG_DB = db
@@ -72,16 +73,22 @@ func setupApplicationHeaderAuthTestDB(t *testing.T) *gorm.DB {
 	common.UsingSQLite = true
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
+	common.OptionMap = map[string]string{
+		"ApplicationHeaderDetectionMode": types.ApplicationHeaderDetectionModeOff,
+	}
+	service.InvalidateApplicationHeaderRulesCache()
 
 	require.NoError(t, db.AutoMigrate(&model.Application{}, &model.Log{}, &model.LogOutbox{}))
 
 	t.Cleanup(func() {
+		service.InvalidateApplicationHeaderRulesCache()
 		model.DB = oldDB
 		model.LOG_DB = oldLogDB
 		common.RedisEnabled = oldRedisEnabled
 		common.UsingSQLite = oldUsingSQLite
 		common.UsingMySQL = oldUsingMySQL
 		common.UsingPostgreSQL = oldUsingPostgreSQL
+		common.OptionMap = oldOptionMap
 
 		sqlDB, err := db.DB()
 		if err == nil {
@@ -92,14 +99,32 @@ func setupApplicationHeaderAuthTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func TestSetupContextForRequestApplicationRejectsUnregisteredHeaderAndRecordsErrorLog(t *testing.T) {
+func setApplicationHeaderDetectionModeForAuthTest(mode string) {
+	common.OptionMapRWMutex.Lock()
+	if common.OptionMap == nil {
+		common.OptionMap = map[string]string{}
+	}
+	common.OptionMap["ApplicationHeaderDetectionMode"] = mode
+	common.OptionMapRWMutex.Unlock()
+}
+
+func getApplicationHeaderDetectionFromAuthTest(t *testing.T, c *gin.Context) types.ApplicationHeaderDetection {
+	t.Helper()
+	detection, ok := common.GetContextKeyType[types.ApplicationHeaderDetection](c, constant.ContextKeyApplicationHeaderDetection)
+	require.True(t, ok)
+	return detection
+}
+
+func TestSetupContextForRequestApplicationRejectsUnmatchedHeaderForStrictBoundApplicationAndRecordsErrorLog(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupApplicationHeaderAuthTestDB(t)
+	setApplicationHeaderDetectionModeForAuthTest(types.ApplicationHeaderDetectionModeEnforce)
 
 	application := &model.Application{
-		AppKey: "registered-app",
-		Name:   "Registered App",
-		Status: 1,
+		AppKey:              "registered-app",
+		Name:                "Registered App",
+		Status:              1,
+		HeaderMatchRequired: true,
 	}
 	require.NoError(t, application.SetHeaderValidationRules([]types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://registered.example.com"},
@@ -115,10 +140,11 @@ func TestSetupContextForRequestApplicationRejectsUnregisteredHeaderAndRecordsErr
 	common.SetContextKey(c, constant.ContextKeyRecordIpLog, false)
 
 	token := &model.Token{
-		Id:     7,
-		UserId: 42,
-		Name:   "application-test-token",
-		Group:  "default",
+		Id:            7,
+		UserId:        42,
+		Name:          "application-test-token",
+		Group:         "default",
+		ApplicationId: &application.Id,
 	}
 
 	err := SetupContextForRequestApplication(c, token)
@@ -134,20 +160,22 @@ func TestSetupContextForRequestApplicationRejectsUnregisteredHeaderAndRecordsErr
 
 	var other map[string]interface{}
 	require.NoError(t, common.Unmarshal([]byte(logs[0].Other), &other))
-	require.Equal(t, "unregistered_application", other["reject_reason"])
-	if _, ok := other["application_header_validation"]; !ok {
-		require.Fail(t, "expected application_header_validation in error log")
+	require.Equal(t, "application_header_unmatched", other["reject_reason"])
+	if _, ok := other["application_header_detection"]; !ok {
+		require.Fail(t, "expected application_header_detection in error log")
 	}
 }
 
 func TestSetupContextForRequestApplicationRejectsAmbiguousHeaderAndRecordsErrorLog(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupApplicationHeaderAuthTestDB(t)
+	setApplicationHeaderDetectionModeForAuthTest(types.ApplicationHeaderDetectionModeEnforce)
 
 	equalsApplication := &model.Application{
-		AppKey: "equals-app",
-		Name:   "Equals App",
-		Status: 1,
+		AppKey:              "equals-app",
+		Name:                "Equals App",
+		Status:              1,
+		HeaderMatchRequired: true,
 	}
 	require.NoError(t, equalsApplication.SetHeaderValidationRules([]types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://app.example.com"},
@@ -174,10 +202,11 @@ func TestSetupContextForRequestApplicationRejectsAmbiguousHeaderAndRecordsErrorL
 	common.SetContextKey(c, constant.ContextKeyRecordIpLog, false)
 
 	token := &model.Token{
-		Id:     9,
-		UserId: 44,
-		Name:   "ambiguous-application-test-token",
-		Group:  "default",
+		Id:            9,
+		UserId:        44,
+		Name:          "ambiguous-application-test-token",
+		Group:         "default",
+		ApplicationId: &equalsApplication.Id,
 	}
 
 	err := SetupContextForRequestApplication(c, token)
@@ -196,11 +225,13 @@ func TestSetupContextForRequestApplicationRejectsAmbiguousHeaderAndRecordsErrorL
 func TestSetupContextForRequestApplicationRejectsBoundTokenHeaderMismatch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupApplicationHeaderAuthTestDB(t)
+	setApplicationHeaderDetectionModeForAuthTest(types.ApplicationHeaderDetectionModeEnforce)
 
 	boundApplication := &model.Application{
-		AppKey: "bound-app",
-		Name:   "Bound App",
-		Status: 1,
+		AppKey:              "bound-app",
+		Name:                "Bound App",
+		Status:              1,
+		HeaderMatchRequired: true,
 	}
 	require.NoError(t, boundApplication.SetHeaderValidationRules([]types.ApplicationHeaderValidationRule{
 		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://bound.example.com"},
@@ -242,6 +273,199 @@ func TestSetupContextForRequestApplicationRejectsBoundTokenHeaderMismatch(t *tes
 	var other map[string]interface{}
 	require.NoError(t, common.Unmarshal([]byte(logs[0].Other), &other))
 	require.Equal(t, "application_header_token_mismatch", other["reject_reason"])
+}
+
+func TestSetupContextForRequestApplicationDefaultOffSkipsHeaderDetection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupApplicationHeaderAuthTestDB(t)
+
+	boundApplication := &model.Application{
+		AppKey:              "bound-app",
+		Name:                "Bound App",
+		Status:              1,
+		HeaderMatchRequired: true,
+	}
+	require.NoError(t, boundApplication.SetHeaderValidationRules([]types.ApplicationHeaderValidationRule{
+		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://bound.example.com"},
+	}))
+	require.NoError(t, boundApplication.Insert())
+
+	headerApplication := &model.Application{
+		AppKey: "header-app",
+		Name:   "Header App",
+		Status: 1,
+	}
+	require.NoError(t, headerApplication.SetHeaderValidationRules([]types.ApplicationHeaderValidationRule{
+		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://header.example.com"},
+	}))
+	require.NoError(t, headerApplication.Insert())
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Request.Header.Set("Origin", "https://header.example.com")
+
+	token := &model.Token{
+		Id:            12,
+		UserId:        47,
+		Name:          "off-mode-token",
+		Group:         "default",
+		ApplicationId: &boundApplication.Id,
+	}
+
+	err := SetupContextForRequestApplication(c, token)
+	require.NoError(t, err)
+	require.False(t, c.IsAborted())
+	detection := getApplicationHeaderDetectionFromAuthTest(t, c)
+	require.Equal(t, types.ApplicationHeaderDetectionModeOff, detection.Mode)
+	require.False(t, detection.Checked)
+	require.Equal(t, types.ApplicationHeaderDetectionResultSkippedOff, detection.Result)
+}
+
+func TestSetupContextForRequestApplicationObserveRecordsMismatchWithoutRejecting(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupApplicationHeaderAuthTestDB(t)
+	setApplicationHeaderDetectionModeForAuthTest(types.ApplicationHeaderDetectionModeObserve)
+
+	boundApplication := &model.Application{
+		AppKey:              "bound-app",
+		Name:                "Bound App",
+		Status:              1,
+		HeaderMatchRequired: true,
+	}
+	require.NoError(t, boundApplication.SetHeaderValidationRules([]types.ApplicationHeaderValidationRule{
+		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://bound.example.com"},
+	}))
+	require.NoError(t, boundApplication.Insert())
+
+	headerApplication := &model.Application{
+		AppKey: "header-app",
+		Name:   "Header App",
+		Status: 1,
+	}
+	require.NoError(t, headerApplication.SetHeaderValidationRules([]types.ApplicationHeaderValidationRule{
+		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://header.example.com"},
+	}))
+	require.NoError(t, headerApplication.Insert())
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Request.Header.Set("Origin", "https://header.example.com")
+
+	token := &model.Token{
+		Id:            13,
+		UserId:        48,
+		Name:          "observe-mode-token",
+		Group:         "default",
+		ApplicationId: &boundApplication.Id,
+	}
+
+	err := SetupContextForRequestApplication(c, token)
+	require.NoError(t, err)
+	require.False(t, c.IsAborted())
+	detection := getApplicationHeaderDetectionFromAuthTest(t, c)
+	require.Equal(t, types.ApplicationHeaderDetectionModeObserve, detection.Mode)
+	require.True(t, detection.Checked)
+	require.False(t, detection.Blocked)
+	require.Equal(t, types.ApplicationHeaderDetectionResultMismatch, detection.Result)
+	require.Equal(t, headerApplication.Id, detection.MatchedApplicationId)
+}
+
+func TestSetupContextForRequestApplicationEnforceAllowsNonstrictBoundMismatch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupApplicationHeaderAuthTestDB(t)
+	setApplicationHeaderDetectionModeForAuthTest(types.ApplicationHeaderDetectionModeEnforce)
+
+	boundApplication := &model.Application{
+		AppKey:              "bound-app",
+		Name:                "Bound App",
+		Status:              1,
+		HeaderMatchRequired: false,
+	}
+	require.NoError(t, boundApplication.SetHeaderValidationRules([]types.ApplicationHeaderValidationRule{
+		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://bound.example.com"},
+	}))
+	require.NoError(t, boundApplication.Insert())
+
+	headerApplication := &model.Application{
+		AppKey: "header-app",
+		Name:   "Header App",
+		Status: 1,
+	}
+	require.NoError(t, headerApplication.SetHeaderValidationRules([]types.ApplicationHeaderValidationRule{
+		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://header.example.com"},
+	}))
+	require.NoError(t, headerApplication.Insert())
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Request.Header.Set("Origin", "https://header.example.com")
+
+	token := &model.Token{
+		Id:            14,
+		UserId:        49,
+		Name:          "nonstrict-enforce-token",
+		Group:         "default",
+		ApplicationId: &boundApplication.Id,
+	}
+
+	err := SetupContextForRequestApplication(c, token)
+	require.NoError(t, err)
+	require.False(t, c.IsAborted())
+	detection := getApplicationHeaderDetectionFromAuthTest(t, c)
+	require.Equal(t, types.ApplicationHeaderDetectionModeEnforce, detection.Mode)
+	require.False(t, detection.Enforced)
+	require.False(t, detection.Blocked)
+	require.Equal(t, types.ApplicationHeaderDetectionResultMismatch, detection.Result)
+}
+
+func TestSetupContextForRequestApplicationEnforceRejectsUnboundDetectedApplication(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupApplicationHeaderAuthTestDB(t)
+	setApplicationHeaderDetectionModeForAuthTest(types.ApplicationHeaderDetectionModeEnforce)
+
+	application := &model.Application{
+		AppKey: "detected-app",
+		Name:   "Detected App",
+		Status: 1,
+	}
+	require.NoError(t, application.SetHeaderValidationRules([]types.ApplicationHeaderValidationRule{
+		{Header: "Origin", Operator: types.ApplicationHeaderOperatorEquals, Value: "https://detected.example.com"},
+	}))
+	require.NoError(t, application.Insert())
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Request.Header.Set("Origin", "https://detected.example.com")
+	common.SetContextKey(c, constant.ContextKeyRecordIpLog, false)
+
+	token := &model.Token{
+		Id:     15,
+		UserId: 50,
+		Name:   "unbound-detected-token",
+		Group:  "default",
+	}
+
+	err := SetupContextForRequestApplication(c, token)
+	require.ErrorIs(t, err, service.ErrTokenApplicationNotBound)
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+
+	detection := getApplicationHeaderDetectionFromAuthTest(t, c)
+	require.True(t, detection.Enforced)
+	require.True(t, detection.Blocked)
+	require.Equal(t, types.ApplicationHeaderDetectionResultBlockedMismatch, detection.Result)
+	require.Equal(t, application.Id, detection.MatchedApplicationId)
+
+	var logs []model.Log
+	require.NoError(t, db.Find(&logs).Error)
+	require.Len(t, logs, 1)
+	var other map[string]interface{}
+	require.NoError(t, common.Unmarshal([]byte(logs[0].Other), &other))
+	require.Equal(t, "application_header_unbound_detected", other["reject_reason"])
+	require.Contains(t, other, "application_header_detection")
 }
 
 func TestSetupContextForRequestApplicationAllowsMatchingXAppIdAndHeader(t *testing.T) {
